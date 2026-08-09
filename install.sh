@@ -182,8 +182,22 @@ cat > /usr/libexec/void-mgmt-up <<'MGMT_UP'
 set -eu
 DEVICE='void_mgmt'
 ADDRESS="$(cat /etc/void-router/management_ip)"
-ENDPOINT="$(cat /etc/void-router/wg_endpoint_ip):$(cat /etc/void-router/wg_endpoint_port)"
+ENDPOINT_IP="$(cat /etc/void-router/wg_endpoint_ip)"
+ENDPOINT="$ENDPOINT_IP:$(cat /etc/void-router/wg_endpoint_port)"
 SERVER_KEY="$(cat /etc/void-router/wg_server_public.key)"
+# Keep the WireGuard UDP transport on physical WAN. Podkop marks LAN traffic
+# for TProxy; this explicit /32 route also survives a policy-routing change.
+ROUTE="$(ip route get "$ENDPOINT_IP" 2>/dev/null || true)"
+WAN_DEV="$(printf '%s\n' "$ROUTE" | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+WAN_GW="$(printf '%s\n' "$ROUTE" | sed -n 's/.* via \([0-9.]*\).*/\1/p')"
+case "$WAN_DEV" in ''|void_mgmt) WAN_DEV='' ;; esac
+if [ -n "$WAN_DEV" ]; then
+    if [ -n "$WAN_GW" ]; then
+        ip route replace "$ENDPOINT_IP/32" via "$WAN_GW" dev "$WAN_DEV" metric 5
+    else
+        ip route replace "$ENDPOINT_IP/32" dev "$WAN_DEV" metric 5
+    fi
+fi
 ip link show "$DEVICE" >/dev/null 2>&1 || ip link add dev "$DEVICE" type wireguard
 ip address show dev "$DEVICE" | grep -q " $ADDRESS/32" || {
     ip address flush dev "$DEVICE"
@@ -325,8 +339,9 @@ chmod 700 /usr/bin/void-router-refresh
 say 'Downloading and separating the router subscription...'
 /usr/bin/void-router-refresh
 
-grep -v '/usr/bin/void-router-refresh' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
+grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
 printf '17 * * * * /usr/bin/void-router-refresh >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
+printf '*/5 * * * * /usr/libexec/void-mgmt-up >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
 mv "$WORK_DIR/root.cron" /etc/crontabs/root
 chmod 600 /etc/crontabs/root
 /etc/init.d/cron restart
