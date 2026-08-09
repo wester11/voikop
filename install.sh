@@ -92,35 +92,12 @@ case "$HTTP_CODE" in
     *) die "Provisioning service returned HTTP ${HTTP_CODE:-unavailable}." ;;
 esac
 
-# A factory-reset OpenWrt device can have an empty root password.  SSH password
-# authentication is disabled only after key verification, but LuCI must not be
-# left with an empty local administrator password.
+# The owner, not the installer, controls the local OpenWrt root password.
+# Password SSH is disabled only after the server verifies key-only support SSH.
 ROOT_HASH="$(awk -F: '$1 == "root" {print $2; exit}' /etc/shadow 2>/dev/null || true)"
 case "$ROOT_HASH" in
     ''|'!'|'*')
-        ROOT_PASSWORD="${VOID_ROOT_PASSWORD:-}"
-        if [ -z "$ROOT_PASSWORD" ]; then
-            say 'Set a local OpenWrt root password (12+ characters).'
-            while :; do
-                printf 'New local root password: '
-                stty -echo 2>/dev/null || true
-                IFS= read -r ROOT_PASSWORD || true
-                stty echo 2>/dev/null || true
-                printf '\nConfirm local root password: '
-                stty -echo 2>/dev/null || true
-                IFS= read -r ROOT_PASSWORD_CONFIRM || true
-                stty echo 2>/dev/null || true
-                printf '\n'
-                [ "${#ROOT_PASSWORD}" -ge 12 ] || { say 'Use at least 12 characters.'; continue; }
-                [ "$ROOT_PASSWORD" = "$ROOT_PASSWORD_CONFIRM" ] || { say 'Passwords do not match.'; continue; }
-                unset ROOT_PASSWORD_CONFIRM
-                break
-            done
-        fi
-        [ "${#ROOT_PASSWORD}" -ge 12 ] || die 'Local root password must contain at least 12 characters.'
-        printf 'root:%s\n' "$ROOT_PASSWORD" | chpasswd
-        ROOT_PASSWORD=''
-        unset ROOT_PASSWORD VOID_ROOT_PASSWORD 2>/dev/null || true
+        say 'WARNING: local root password is empty; the router owner must set it in LuCI or with passwd.'
         ;;
 esac
 
