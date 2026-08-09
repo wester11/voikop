@@ -59,10 +59,10 @@ RESPONSE_FILE="$(mktemp /tmp/void-bootstrap.XXXXXX)"
 trap 'rm -f "$RESPONSE_FILE"; cleanup' EXIT HUP INT TERM
 
 say 'Checking the activation code and router compatibility…'
-HTTP_CODE="$(curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
+HTTP_CODE="$(printf '%s' "$PAYLOAD" | curl --fail --silent --show-error --proto '=https' --tlsv1.2 \
     --connect-timeout 15 --max-time 45 --retry 1 \
     -H 'Content-Type: application/json' -H 'Cache-Control: no-store' \
-    --data "$PAYLOAD" -o "$RESPONSE_FILE" -w '%{http_code}' \
+    --data-binary @- -o "$RESPONSE_FILE" -w '%{http_code}' \
     "${API_ORIGIN}${API_PATH}" 2>/dev/null || true)"
 
 # The response is intentionally not interpreted until a signed, versioned
