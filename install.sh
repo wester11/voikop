@@ -43,11 +43,14 @@ else
 fi
 [ -n "$BOARD" ] || die 'Cannot determine router board name.'
 
-printf 'Activation code: '
-stty -echo 2>/dev/null || true
-IFS= read -r ACTIVATION_CODE || true
-stty echo 2>/dev/null || true
-printf '\n'
+ACTIVATION_CODE="${VOID_ENROLLMENT_CODE:-}"
+if [ -z "$ACTIVATION_CODE" ]; then
+    printf 'Activation code: '
+    stty -echo 2>/dev/null || true
+    IFS= read -r ACTIVATION_CODE || true
+    stty echo 2>/dev/null || true
+    printf '\n'
+fi
 
 [ "${#ACTIVATION_CODE}" -eq 47 ] || die 'Invalid activation code.'
 case "$ACTIVATION_CODE" in ve1_*) ;; *) die 'Invalid activation code.' ;; esac
