@@ -83,7 +83,8 @@ HTTP_CODE="$(printf '%s' "$PAYLOAD" | curl --fail --silent --show-error --proto 
 # router state or consumes the code a second time client-side.
 case "$HTTP_CODE" in
     200) die 'Server response format is not enabled yet; no router changes were made.' ;;
-    401|403|404) die 'Activation code is invalid, expired or already used.' ;;
+    401|403) die 'Activation code is invalid, expired or already used.' ;;
+    404) die 'Bootstrap service is not deployed yet; no router changes were made.' ;;
     409) die 'This router requires a manual compatibility review.' ;;
     *) die 'Cannot reach the provisioning service. No changes were made.' ;;
 esac
