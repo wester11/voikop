@@ -274,6 +274,9 @@ fi
 cp /etc/config/podkop "$WORK_DIR/podkop.backup"
 uci -q delete podkop.void_youtube || true
 uci -q delete podkop.void_foreign || true
+# The package ships a placeholder `main` section with an empty URL.  Leaving it
+# enabled makes Podkop validate it alongside the managed sections and abort.
+uci -q delete podkop.main || true
 uci set podkop.void_youtube=section
 uci set podkop.void_youtube.connection_type='proxy'
 uci set podkop.void_youtube.proxy_config_type='urltest'
