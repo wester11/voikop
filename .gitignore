@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+*.sqlite*
+*.log
+state/
+dist/
+__pycache__/
+
