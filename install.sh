@@ -274,18 +274,19 @@ fi
 cp /etc/config/podkop "$WORK_DIR/podkop.backup"
 uci -q delete podkop.void_youtube || true
 uci -q delete podkop.void_foreign || true
-# The package ships a placeholder `main` section with an empty URL.  Leaving it
-# enabled makes Podkop validate it alongside the managed sections and abort.
-uci -q delete podkop.main || true
-uci set podkop.void_youtube=section
-uci set podkop.void_youtube.connection_type='proxy'
-uci set podkop.void_youtube.proxy_config_type='urltest'
-uci set podkop.void_youtube.urltest_check_interval='3m'
-uci set podkop.void_youtube.urltest_tolerance='50'
-uci set podkop.void_youtube.urltest_testing_url='https://www.gstatic.com/generate_204'
-uci add_list podkop.void_youtube.community_lists='youtube'
+uci -q delete podkop.main.proxy_string || true
+uci -q delete podkop.main.selector_proxy_links || true
+uci -q delete podkop.main.urltest_proxy_links || true
+uci -q delete podkop.main.community_lists || true
+uci set podkop.main=section
+uci set podkop.main.connection_type='proxy'
+uci set podkop.main.proxy_config_type='urltest'
+uci set podkop.main.urltest_check_interval='3m'
+uci set podkop.main.urltest_tolerance='50'
+uci set podkop.main.urltest_testing_url='https://www.gstatic.com/generate_204'
+uci add_list podkop.main.community_lists='youtube'
 while IFS= read -r link; do
-    [ -z "$link" ] || uci add_list podkop.void_youtube.urltest_proxy_links="$link"
+    [ -z "$link" ] || uci add_list podkop.main.urltest_proxy_links="$link"
 done < "$WORK_DIR/youtube.links"
 uci set podkop.void_foreign=section
 uci set podkop.void_foreign.connection_type='proxy'
