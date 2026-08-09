@@ -227,7 +227,7 @@ printf '%s\n' locked
 LOCKDOWN
 chmod 700 /usr/libexec/void-router-lockdown
 
-uci -q delete firewall.void_mgmt
+uci -q delete firewall.void_mgmt || true
 uci set firewall.void_mgmt=zone
 uci set firewall.void_mgmt.name='void_mgmt'
 uci add_list firewall.void_mgmt.device='void_mgmt'
@@ -272,8 +272,8 @@ if [ "$NEW_HASH" = "$OLD_HASH" ]; then
     exit 0
 fi
 cp /etc/config/podkop "$WORK_DIR/podkop.backup"
-uci -q delete podkop.void_youtube
-uci -q delete podkop.void_foreign
+uci -q delete podkop.void_youtube || true
+uci -q delete podkop.void_foreign || true
 uci set podkop.void_youtube=section
 uci set podkop.void_youtube.connection_type='proxy'
 uci set podkop.void_youtube.proxy_config_type='urltest'
