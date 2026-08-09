@@ -20,8 +20,18 @@ trap cleanup EXIT HUP INT TERM
 
 [ "$(id -u)" = '0' ] || die 'Run as root.'
 [ -r /etc/openwrt_release ] || die 'This installer supports OpenWrt only.'
-command -v curl >/dev/null 2>&1 || die 'curl is required.'
 command -v uci >/dev/null 2>&1 || die 'uci is required.'
+
+if ! command -v curl >/dev/null 2>&1; then
+    say 'Installing curl prerequisite…'
+    if command -v apk >/dev/null 2>&1; then
+        apk update && apk add curl
+    elif command -v opkg >/dev/null 2>&1; then
+        opkg update && opkg install curl
+    else
+        die 'Neither apk nor opkg is available.'
+    fi
+fi
 
 RELEASE="$(. /etc/openwrt_release; printf '%s' "${DISTRIB_RELEASE:-}")"
 case "$RELEASE" in
