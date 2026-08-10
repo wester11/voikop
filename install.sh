@@ -298,11 +298,27 @@ done
 COMPLETE_REQUEST="$WORK_DIR/complete-request.json"
 COMPLETE_RESPONSE="$WORK_DIR/complete.json"
 printf '{"device_id":"%s","refresh_token":"%s"}' "$DEVICE_ID" "$REFRESH_TOKEN" > "$COMPLETE_REQUEST"
-HTTP_CODE="$(curl --silent --show-error --proto '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 45 -H 'Content-Type: application/json' \
-    --data-binary "@$COMPLETE_REQUEST" -o "$COMPLETE_RESPONSE" -w '%{http_code}' \
-    "$API_ORIGIN/v1/router/complete" || true)"
-[ "$HTTP_CODE" = 200 ] || die "Remote SSH verification failed (HTTP ${HTTP_CODE:-unavailable})."
+# WireGuard can complete its first handshake a few seconds before Dropbear is
+# ready after the firewall reload.  The gateway deliberately returns 409 until
+# it can verify the per-router support key, so retry only that transient state.
+# Other responses are terminal and never activate the router.
+COMPLETE_OK=0
+COMPLETE_ATTEMPT=0
+while [ "$COMPLETE_ATTEMPT" -lt 12 ]; do
+    HTTP_CODE="$(curl --silent --show-error --proto '=https' --tlsv1.2 \
+        --connect-timeout 15 --max-time 45 -H 'Content-Type: application/json' \
+        --data-binary "@$COMPLETE_REQUEST" -o "$COMPLETE_RESPONSE" -w '%{http_code}' \
+        "$API_ORIGIN/v1/router/complete" || true)"
+    if [ "$HTTP_CODE" = 200 ]; then
+        COMPLETE_OK=1
+        break
+    fi
+    [ "$HTTP_CODE" = 409 ] || break
+    COMPLETE_ATTEMPT=$((COMPLETE_ATTEMPT + 1))
+    [ "$COMPLETE_ATTEMPT" -lt 12 ] && say 'Management SSH is starting; checking again...'
+    sleep 3
+done
+[ "$COMPLETE_OK" = 1 ] || die "Remote SSH verification failed (HTTP ${HTTP_CODE:-unavailable})."
 
 ACTIVATION_CODE=''
 unset ACTIVATION_CODE VOID_ENROLLMENT_CODE 2>/dev/null || true
