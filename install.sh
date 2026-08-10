@@ -114,10 +114,13 @@ REFRESH_TOKEN="$(jget '@.refresh_token')"
 
 case "$DEVICE_ID" in rtr_[0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;; *) die 'Invalid server response.' ;; esac
 [ "${#DEVICE_ID}" -eq 36 ] || die 'Invalid server response.'
+case "$SUBSCRIPTION_NAME" in ''|*[!A-Za-z0-9._-]*) die 'Invalid subscription identity.' ;; esac
+[ "${#SUBSCRIPTION_NAME}" -le 64 ] || die 'Invalid subscription identity.'
 case "$MANAGEMENT_IP" in 10.240.0.*) ;; *) die 'Invalid management address.' ;; esac
 case "$WG_ENDPOINT_IP" in *.*.*.*) ;; *) die 'Invalid management endpoint.' ;; esac
 case "$WG_ENDPOINT_PORT" in ''|*[!0-9]*) die 'Invalid management endpoint.' ;; esac
 [ "${#WG_PRIVATE}" -eq 44 ] && [ "${#WG_SERVER_PUBLIC}" -eq 44 ] || die 'Invalid WireGuard response.'
+case "$WG_PRIVATE$WG_SERVER_PUBLIC" in *[!A-Za-z0-9+/=]*) die 'Invalid WireGuard response.' ;; esac
 case "$SUPPORT_KEY" in 'ssh-ed25519 '*" void-router:$DEVICE_ID") ;; *) die 'Invalid support key.' ;; esac
 [ "${#REFRESH_TOKEN}" -eq 47 ] || die 'Invalid refresh credential.'
 case "$REFRESH_TOKEN" in vr1_*) ;; *) die 'Invalid refresh credential.' ;; esac
@@ -148,16 +151,16 @@ install_podkop() {
     if command -v apk >/dev/null 2>&1; then
         podkop_pkg="$WORK_DIR/podkop.apk"
         luci_pkg="$WORK_DIR/luci-app-podkop.apk"
-        curl -fL --proto '=https' --tlsv1.2 -o "$podkop_pkg" "$base/podkop-${PODKOP_VERSION}-r1.apk"
-        curl -fL --proto '=https' --tlsv1.2 -o "$luci_pkg" "$base/luci-app-podkop-${PODKOP_VERSION}-r1.apk"
+        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$podkop_pkg" "$base/podkop-${PODKOP_VERSION}-r1.apk"
+        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$luci_pkg" "$base/luci-app-podkop-${PODKOP_VERSION}-r1.apk"
         verify_sha256 "$PODKOP_APK_SHA256" "$podkop_pkg"
         verify_sha256 "$LUCI_APK_SHA256" "$luci_pkg"
         apk add --allow-untrusted "$podkop_pkg" "$luci_pkg"
     else
         podkop_pkg="$WORK_DIR/podkop.ipk"
         luci_pkg="$WORK_DIR/luci-app-podkop.ipk"
-        curl -fL --proto '=https' --tlsv1.2 -o "$podkop_pkg" "$base/podkop-v${PODKOP_VERSION}-r1-all.ipk"
-        curl -fL --proto '=https' --tlsv1.2 -o "$luci_pkg" "$base/luci-app-podkop-v${PODKOP_VERSION}-r1-all.ipk"
+        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$podkop_pkg" "$base/podkop-v${PODKOP_VERSION}-r1-all.ipk"
+        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$luci_pkg" "$base/luci-app-podkop-v${PODKOP_VERSION}-r1-all.ipk"
         verify_sha256 "$PODKOP_IPK_SHA256" "$podkop_pkg"
         verify_sha256 "$LUCI_IPK_SHA256" "$luci_pkg"
         opkg install "$podkop_pkg" "$luci_pkg"
