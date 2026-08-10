@@ -197,8 +197,14 @@ ADDRESS="$(cat /etc/void-router/management_ip)"
 ENDPOINT_IP="$(cat /etc/void-router/wg_endpoint_ip)"
 ENDPOINT="$ENDPOINT_IP:$(cat /etc/void-router/wg_endpoint_port)"
 SERVER_KEY="$(cat /etc/void-router/wg_server_public.key)"
-# Keep the WireGuard UDP transport on physical WAN. Podkop marks LAN traffic
-# for TProxy; this explicit /32 route also survives a policy-routing change.
+# The management endpoint is an IPv4 address, not a hostname: an outage of
+# dnsmasq or the configured DNS resolvers cannot affect an existing tunnel.
+# Keep the encrypted WireGuard UDP transport on physical WAN. Podkop policy
+# routes marked traffic through its own table, so the dedicated fwmark plus the
+# two higher-priority rules below make this path independent of Podkop.
+MGMT_FWMARK='0x564f'
+MGMT_ENDPOINT_RULE_PRIORITY=90
+MGMT_MARK_RULE_PRIORITY=91
 ROUTE="$(ip route get "$ENDPOINT_IP" 2>/dev/null || true)"
 WAN_DEV="$(printf '%s\n' "$ROUTE" | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
 WAN_GW="$(printf '%s\n' "$ROUTE" | sed -n 's/.* via \([0-9.]*\).*/\1/p')"
@@ -216,9 +222,16 @@ ip address show dev "$DEVICE" | grep -q " $ADDRESS/32" || {
     ip address add "$ADDRESS/32" dev "$DEVICE"
 }
 wg set "$DEVICE" private-key /etc/void-router/wg_private.key \
+    fwmark "$MGMT_FWMARK" \
     peer "$SERVER_KEY" endpoint "$ENDPOINT" allowed-ips 10.240.0.1/32 persistent-keepalive 25
 ip link set up dev "$DEVICE"
 ip route replace 10.240.0.1/32 dev "$DEVICE"
+# These rules are intentionally before Podkop's policy-routing priority (105).
+# Delete only matching old rules so repeated hotplug/cron executions are safe.
+while ip rule del pref "$MGMT_ENDPOINT_RULE_PRIORITY" to "$ENDPOINT_IP/32" lookup main 2>/dev/null; do :; done
+while ip rule del pref "$MGMT_MARK_RULE_PRIORITY" fwmark "$MGMT_FWMARK/0xffffffff" lookup main 2>/dev/null; do :; done
+ip rule add pref "$MGMT_ENDPOINT_RULE_PRIORITY" to "$ENDPOINT_IP/32" lookup main
+ip rule add pref "$MGMT_MARK_RULE_PRIORITY" fwmark "$MGMT_FWMARK/0xffffffff" lookup main
 MGMT_UP
 chmod 700 /usr/libexec/void-mgmt-up
 
@@ -244,8 +257,11 @@ set -eu
 DEVICE_ID="$(cat /etc/void-router/device_id)"
 grep -q " void-router:$DEVICE_ID$" /etc/dropbear/authorized_keys
 for section in $(uci show dropbear | sed -n "s/^dropbear\.\([^.=]*\)=dropbear$/\1/p"); do
-    uci set "dropbear.$section.PasswordAuth=off"
-    uci set "dropbear.$section.RootPasswordAuth=off"
+    # The owner chooses the local root password themselves. SSH from WAN is
+    # explicitly blocked below; support uses the dedicated WireGuard interface
+    # and an individual key, never the owner's password.
+    uci set "dropbear.$section.PasswordAuth=on"
+    uci set "dropbear.$section.RootPasswordAuth=on"
 done
 uci commit dropbear
 (sleep 1; /etc/init.d/dropbear restart) >/dev/null 2>&1 &
@@ -261,6 +277,13 @@ uci set firewall.void_mgmt.input='ACCEPT'
 uci set firewall.void_mgmt.output='ACCEPT'
 uci set firewall.void_mgmt.forward='REJECT'
 uci set firewall.void_mgmt.masq='0'
+uci -q delete firewall.void_block_wan_ssh || true
+uci set firewall.void_block_wan_ssh=rule
+uci set firewall.void_block_wan_ssh.name='VOID: deny SSH from WAN'
+uci set firewall.void_block_wan_ssh.src='wan'
+uci set firewall.void_block_wan_ssh.proto='tcp'
+uci set firewall.void_block_wan_ssh.dest_port='22'
+uci set firewall.void_block_wan_ssh.target='REJECT'
 uci commit firewall
 /etc/init.d/firewall restart
 /etc/init.d/void-mgmt enable
