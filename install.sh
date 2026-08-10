@@ -7,11 +7,6 @@ umask 077
 
 API_ORIGIN='https://routersub.netvoid.ru'
 MIN_FREE_KB=24576
-PODKOP_VERSION='0.7.21'
-PODKOP_APK_SHA256='55870987143ff985272f151e36185e5616d2645aec6faae64e0f5a0f121c1e3b'
-LUCI_APK_SHA256='aa370b9ba123b570a630bdf408fa2de291a1e0c0bb4cfaecb2350f4d15eebc12'
-PODKOP_IPK_SHA256='e67956585f018b460fe3af62029577946a0da6faaac92669dfc0361efe09a0ef'
-LUCI_IPK_SHA256='280eac58d6ae43601d4aaa05342d2b47415384ef16f9664a09cf309816667f92'
 
 say() { printf '%s\n' "[VOID] $*"; }
 die() { printf '%s\n' "[VOID] ERROR: $*" >&2; exit 1; }
@@ -129,45 +124,13 @@ install_management_packages() {
     say 'Installing independent management tunnel packages...'
     if command -v apk >/dev/null 2>&1; then
         apk update
-        apk add wireguard-tools kmod-wireguard ip-full ca-bundle coreutils-base64
+        apk add wireguard-tools kmod-wireguard ip-full ca-bundle
     else
         opkg update
-        opkg install wireguard-tools kmod-wireguard ip-full ca-bundle coreutils-base64
+        opkg install wireguard-tools kmod-wireguard ip-full ca-bundle
     fi
 }
 command -v wg >/dev/null 2>&1 || install_management_packages
-command -v base64 >/dev/null 2>&1 || install_management_packages
-
-verify_sha256() {
-    expected="$1"
-    file="$2"
-    actual="$(sha256sum "$file" | awk '{print $1}')"
-    [ "$actual" = "$expected" ] || die "Package integrity check failed for $(basename "$file")."
-}
-
-install_podkop() {
-    say "Installing Podkop ${PODKOP_VERSION} from verified release packages..."
-    base="https://github.com/itdoginfo/podkop/releases/download/${PODKOP_VERSION}"
-    if command -v apk >/dev/null 2>&1; then
-        podkop_pkg="$WORK_DIR/podkop.apk"
-        luci_pkg="$WORK_DIR/luci-app-podkop.apk"
-        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$podkop_pkg" "$base/podkop-${PODKOP_VERSION}-r1.apk"
-        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$luci_pkg" "$base/luci-app-podkop-${PODKOP_VERSION}-r1.apk"
-        verify_sha256 "$PODKOP_APK_SHA256" "$podkop_pkg"
-        verify_sha256 "$LUCI_APK_SHA256" "$luci_pkg"
-        apk add --allow-untrusted "$podkop_pkg" "$luci_pkg"
-    else
-        podkop_pkg="$WORK_DIR/podkop.ipk"
-        luci_pkg="$WORK_DIR/luci-app-podkop.ipk"
-        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$podkop_pkg" "$base/podkop-v${PODKOP_VERSION}-r1-all.ipk"
-        curl --fail --show-error --location --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 1 -o "$luci_pkg" "$base/luci-app-podkop-v${PODKOP_VERSION}-r1-all.ipk"
-        verify_sha256 "$PODKOP_IPK_SHA256" "$podkop_pkg"
-        verify_sha256 "$LUCI_IPK_SHA256" "$luci_pkg"
-        opkg install "$podkop_pkg" "$luci_pkg"
-    fi
-}
-[ -x /etc/init.d/podkop ] || install_podkop
-[ -x /etc/init.d/podkop ] || die 'Podkop installation failed.'
 
 say 'Writing per-router management identity...'
 mkdir -p /etc/void-router /usr/libexec /etc/hotplug.d/iface /etc/dropbear
@@ -289,93 +252,7 @@ uci commit firewall
 /etc/init.d/void-mgmt enable
 /usr/libexec/void-mgmt-up
 
-cat > /usr/bin/void-router-refresh <<'REFRESH'
-#!/bin/sh
-set -eu
-umask 077
-API_ORIGIN='https://routersub.netvoid.ru'
-LOCK_DIR=/tmp/void-router-refresh.lock
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then exit 0; fi
-WORK_DIR="$(mktemp -d /tmp/void-refresh.XXXXXX)"
-cleanup() { rm -rf "$WORK_DIR" "$LOCK_DIR"; }
-trap cleanup EXIT HUP INT TERM
-DEVICE_ID="$(cat /etc/void-router/device_id)"
-REFRESH_TOKEN="$(cat /etc/void-router/refresh_token)"
-REQUEST="$WORK_DIR/request.json"
-RESPONSE="$WORK_DIR/response.json"
-printf '{"device_id":"%s","refresh_token":"%s"}' "$DEVICE_ID" "$REFRESH_TOKEN" > "$REQUEST"
-HTTP_CODE="$(curl --silent --show-error --proto '=https' --tlsv1.2 \
-    --connect-timeout 15 --max-time 60 --retry 1 -H 'Content-Type: application/json' \
-    --data-binary "@$REQUEST" -o "$RESPONSE" -w '%{http_code}' "$API_ORIGIN/v1/router/config" || true)"
-[ "$HTTP_CODE" = 200 ] || { echo "[VOID] Configuration update failed (HTTP ${HTTP_CODE:-unavailable})." >&2; exit 1; }
-YOUTUBE_B64="$(jsonfilter -i "$RESPONSE" -e '@.youtube_b64')"
-FOREIGN_B64="$(jsonfilter -i "$RESPONSE" -e '@.foreign_b64')"
-[ -n "$YOUTUBE_B64" ] && [ -n "$FOREIGN_B64" ] || { echo '[VOID] Empty router groups.' >&2; exit 1; }
-printf '%s' "$YOUTUBE_B64" | base64 -d > "$WORK_DIR/youtube.links"
-printf '%s' "$FOREIGN_B64" | base64 -d > "$WORK_DIR/foreign.links"
-grep -Eq '^(vless|vmess|trojan|ss|hy2|hysteria2|socks4|socks5)://' "$WORK_DIR/youtube.links"
-grep -Eq '^(vless|vmess|trojan|ss|hy2|hysteria2|socks4|socks5)://' "$WORK_DIR/foreign.links"
-NEW_HASH="$(cat "$WORK_DIR/youtube.links" "$WORK_DIR/foreign.links" | sha256sum | awk '{print $1}')"
-OLD_HASH="$(cat /etc/void-router/config.hash 2>/dev/null || true)"
-if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-    exit 0
-fi
-cp /etc/config/podkop "$WORK_DIR/podkop.backup"
-uci -q delete podkop.void_youtube || true
-uci -q delete podkop.void_foreign || true
-uci -q delete podkop.main.proxy_string || true
-uci -q delete podkop.main.selector_proxy_links || true
-uci -q delete podkop.main.urltest_proxy_links || true
-uci -q delete podkop.main.community_lists || true
-uci set podkop.main=section
-uci set podkop.main.connection_type='proxy'
-uci set podkop.main.proxy_config_type='urltest'
-uci set podkop.main.urltest_check_interval='3m'
-uci set podkop.main.urltest_tolerance='50'
-uci set podkop.main.urltest_testing_url='https://www.gstatic.com/generate_204'
-uci add_list podkop.main.community_lists='youtube'
-while IFS= read -r link; do
-    [ -z "$link" ] || uci add_list podkop.main.urltest_proxy_links="$link"
-done < "$WORK_DIR/youtube.links"
-uci set podkop.void_foreign=section
-uci set podkop.void_foreign.connection_type='proxy'
-uci set podkop.void_foreign.proxy_config_type='urltest'
-uci set podkop.void_foreign.urltest_check_interval='3m'
-uci set podkop.void_foreign.urltest_tolerance='50'
-uci set podkop.void_foreign.urltest_testing_url='https://www.gstatic.com/generate_204'
-for list in russia_inside meta discord telegram; do
-    uci add_list podkop.void_foreign.community_lists="$list"
-done
-while IFS= read -r link; do
-    [ -z "$link" ] || uci add_list podkop.void_foreign.urltest_proxy_links="$link"
-done < "$WORK_DIR/foreign.links"
-uci commit podkop
-if ! /etc/init.d/podkop restart; then
-    cp "$WORK_DIR/podkop.backup" /etc/config/podkop
-    /etc/init.d/podkop restart || true
-    echo '[VOID] Podkop rejected the update; previous config restored.' >&2
-    exit 1
-fi
-sleep 4
-if ! /etc/init.d/podkop status >/dev/null 2>&1; then
-    cp "$WORK_DIR/podkop.backup" /etc/config/podkop
-    /etc/init.d/podkop restart || true
-    echo '[VOID] Podkop failed health check; previous config restored.' >&2
-    exit 1
-fi
-printf '%s\n' "$NEW_HASH" > /etc/void-router/config.hash
-jsonfilter -i "$RESPONSE" -e '@.youtube_count' > /etc/void-router/youtube_count
-jsonfilter -i "$RESPONSE" -e '@.foreign_count' > /etc/void-router/foreign_count
-chmod 600 /etc/void-router/config.hash /etc/void-router/youtube_count /etc/void-router/foreign_count
-echo '[VOID] Router subscription updated.'
-REFRESH
-chmod 700 /usr/bin/void-router-refresh
-
-say 'Downloading and separating the router subscription...'
-/usr/bin/void-router-refresh
-
 grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
-printf '17 * * * * /usr/bin/void-router-refresh >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
 printf '*/5 * * * * /usr/libexec/void-mgmt-up >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
 mv "$WORK_DIR/root.cron" /etc/crontabs/root
 chmod 600 /etc/crontabs/root
@@ -405,6 +282,6 @@ HTTP_CODE="$(curl --silent --show-error --proto '=https' --tlsv1.2 \
 
 ACTIVATION_CODE=''
 unset ACTIVATION_CODE VOID_ENROLLMENT_CODE 2>/dev/null || true
-say "SUCCESS: $SUBSCRIPTION_NAME is configured."
-say "YouTube routes: $(cat /etc/void-router/youtube_count); other routes: $(cat /etc/void-router/foreign_count)."
-say "Management: key-only SSH over a dedicated WireGuard tunnel is active."
+say "SUCCESS: $SUBSCRIPTION_NAME is connected to UROBOROS."
+say 'Your existing Podkop and VPN configuration were not changed.'
+say 'Management: key-only SSH over a dedicated WireGuard tunnel is active.'
