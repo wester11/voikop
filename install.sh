@@ -198,6 +198,29 @@ ip rule add pref "$MGMT_MARK_RULE_PRIORITY" fwmark "$MGMT_FWMARK/0xffffffff" loo
 MGMT_UP
 chmod 700 /usr/libexec/void-mgmt-up
 
+cat > /usr/libexec/void-mgmt-heartbeat <<'MGMT_HEARTBEAT'
+#!/bin/sh
+set -eu
+DEVICE_ID="$(cat /etc/void-router/device_id)"
+REFRESH_TOKEN="$(cat /etc/void-router/refresh_token)"
+ENDPOINT_IP="$(cat /etc/void-router/wg_endpoint_ip)"
+# Do not claim a router is online merely because it can reach the internet.
+# The liveness signal is sent only after the dedicated management WireGuard
+# tunnel has a fresh handshake. --resolve keeps this request on the physical
+# WAN endpoint and makes it independent from local DNS and Podkop routing.
+NOW="$(date +%s)"
+LAST="$(wg show void_mgmt latest-handshakes 2>/dev/null | awk '$2 > 0 { print $2; exit }')"
+case "$LAST" in ''|*[!0-9]*) exit 0 ;; esac
+[ $((NOW - LAST)) -le 180 ] || exit 0
+PAYLOAD="{\"device_id\":\"$DEVICE_ID\",\"refresh_token\":\"$REFRESH_TOKEN\"}"
+curl --silent --show-error --fail --proto '=https' --tlsv1.2 \
+    --connect-timeout 10 --max-time 25 --retry 1 \
+    --resolve "routersub.netvoid.ru:443:$ENDPOINT_IP" \
+    -H 'Content-Type: application/json' -H 'Cache-Control: no-store' \
+    --data-binary "$PAYLOAD" 'https://routersub.netvoid.ru/v1/router/heartbeat' >/dev/null
+MGMT_HEARTBEAT
+chmod 700 /usr/libexec/void-mgmt-heartbeat
+
 cat > /etc/init.d/void-mgmt <<'MGMT_INIT'
 #!/bin/sh /etc/rc.common
 START=99
@@ -252,8 +275,9 @@ uci commit firewall
 /etc/init.d/void-mgmt enable
 /usr/libexec/void-mgmt-up
 
-grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
+grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up|/usr/libexec/void-mgmt-heartbeat' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
 printf '*/5 * * * * /usr/libexec/void-mgmt-up >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
+printf '*/5 * * * * /usr/libexec/void-mgmt-heartbeat >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
 mv "$WORK_DIR/root.cron" /etc/crontabs/root
 chmod 600 /etc/crontabs/root
 /etc/init.d/cron restart
