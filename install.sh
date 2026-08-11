@@ -250,7 +250,6 @@ for section in $(uci show dropbear | sed -n "s/^dropbear\.\([^.=]*\)=dropbear$/\
     uci set "dropbear.$section.RootPasswordAuth=on"
 done
 uci commit dropbear
-(sleep 1; /etc/init.d/dropbear restart) >/dev/null 2>&1 &
 printf '%s\n' locked
 LOCKDOWN
 chmod 700 /usr/libexec/void-router-lockdown
@@ -275,6 +274,7 @@ uci commit firewall
 /etc/init.d/void-mgmt enable
 /usr/libexec/void-mgmt-up
 
+touch /etc/crontabs/root
 grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up|/usr/libexec/void-mgmt-heartbeat' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
 printf '*/5 * * * * /usr/libexec/void-mgmt-up >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
 printf '*/5 * * * * /usr/libexec/void-mgmt-heartbeat >/dev/null 2>&1\n' >> "$WORK_DIR/root.cron"
