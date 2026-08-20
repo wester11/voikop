@@ -322,6 +322,6 @@ done
 
 ACTIVATION_CODE=''
 unset ACTIVATION_CODE VOID_ENROLLMENT_CODE 2>/dev/null || true
-say "SUCCESS: $SUBSCRIPTION_NAME is connected to UROBOROS."
+say "SUCCESS: $SUBSCRIPTION_NAME is connected to ORBIT."
 say 'Your existing Podkop and VPN configuration were not changed.'
 say 'Management: key-only SSH over a dedicated WireGuard tunnel is active.'
