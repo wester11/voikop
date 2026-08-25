@@ -31,6 +31,9 @@ cmkt-image-prd.global.ssl.fastly.net
 creativecloud.com
 creativemarket.com
 creativemarketassets.com
+4pda.to
+4pda.ru
+4pda.ws
 etsy.com
 etsycdn.com
 etsystatic.com
