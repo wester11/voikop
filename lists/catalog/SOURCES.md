@@ -1,6 +1,6 @@
 # Sources and review method
 
-Last reviewed: 2026-08-31.
+Last reviewed: 2026-09-06.
 
 The catalog starts from provider-owned suffix domains and is cross-checked
 against the maintained `domain-list-community` service datasets.  That project
@@ -25,6 +25,8 @@ is a discovery source, not authority for routing policy:
 - Wargaming Russia/Belarus business transition: <https://wargaming.com/en/news/business-operations-worldwide/>
 - Wargaming account-transfer FAQ: <https://worldoftanks.eu/en/content/account-transfer-faq/>
 - Wargaming store-route verification: internal Russian-router test, 2026-08-30.
+- Dead by Daylight client endpoint: <https://forums.bhvr.com/dead-by-daylight/discussion/363400/does-anyone-know-where-to-find-a-api-documentation-for-bhvrdbd-com>
+- Epic Games provider and exact CDN endpoints: <https://github.com/v2ray/domain-list-community/blob/master/data/epicgames>
 
 For every future change:
 

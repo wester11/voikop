@@ -1,7 +1,16 @@
 # Battle.net, Blizzard and shared game service endpoints.
+# Blizzard account, launcher, game and first-party content endpoints.
 battle.net
-battlenet.com
 blizzard.com
 blizzardgearstore.com
-blizzard.net
 blz-contentstack.com
+diablo.com
+diablo3.com
+diabloimmortal.com
+firesidegatherings.com
+heroesofthestorm.com
+playwarcraft3.com
+starcraft.com
+starcraft2.com
+battlenet.com
+blizzard.net

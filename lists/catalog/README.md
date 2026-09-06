@@ -12,9 +12,12 @@ route.
 
 ## Safety rules
 
-- Entries are provider-owned domains or specific provider endpoints only.
+- Entries are provider-owned domains or specific, observed provider CDN
+  hostnames only. Exact CDN names such as a game's own
+  `download.example.akamaized.net` endpoint are allowed when a source ties
+  them to that game; they are not the same thing as routing all of Akamai.
 - Do not add broad CDN, cloud, hosting, search, or IP-address ranges just
-  because a service happens to use one today.  Those networks are shared and
+  because a service happens to use one today. Those networks are shared and
   change often.
 - `networks/` is intentionally documentation-only until a provider publishes a
   stable, service-scoped CIDR range.  A domain route can follow DNS changes;
@@ -40,6 +43,11 @@ route.
 - `services/` — narrowly scoped productivity, media and platform endpoints.
 - `networks/` — policy for future published, service-specific network ranges.
 - `SOURCES.md` — provenance and review method.
+
+`../profiles/games-all.domains.txt` is a generated, future-use composition of
+every catalogued game endpoint, including the exact CDN hostnames listed above.
+It deliberately is not a default route: a single game profile is usually a
+better choice for latency and troubleshooting.
 
 Run `python validate_catalog.py` before any future integration.  It rejects
 duplicates inside a list, malformed domains, and overlaps with the active

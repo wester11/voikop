@@ -1,11 +1,11 @@
 # VOIKOP profile: All AI
 #
-# A composed, inactive profile for AI web apps, accounts and APIs.  It merges
+# A composed, future-use profile for AI web apps, accounts and APIs. It merges
 # the reviewed VOIKOP AI catalog with the narrow AI endpoints already present
 # in the active VOID full-services list.  This file is not read by ORBIT,
 # Forkop or Podkop until an explicit profile integration is made.
 #
-# Review date: 2026-08-31
+# Review date: 2026-09-06
 accounts.google.com
 ai.google.dev
 aida.googleapis.com
@@ -73,6 +73,7 @@ notebooklm.google.com
 oaistatic.com
 oaiusercontent.com
 openai.com
+openrouter.ai
 perplexity.ai
 perplexity.com
 poe.com

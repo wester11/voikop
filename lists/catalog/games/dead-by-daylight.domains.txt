@@ -1,4 +1,5 @@
 # Dead by Daylight and Behaviour account/support endpoints.
 behaviourinteractive.com
 bhvr.com
+bhvrdbd.com
 deadbydaylight.com

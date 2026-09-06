@@ -1,6 +1,16 @@
 # Steam client, store, community, content and chat endpoints.
+dota2.com
+edge.steam-dns.top.comcast.net
 playartifact.com
 s.team
+steam.apac.qtlglb.com
+steam.cdn.on.net
+steam.cdn.orcon.net.nz
+steam.cdn.slingshot.co.nz
+steam.cdn.webra.ru
+steam.eca.qtlglb.com
+steam.naeu.qtlglb.com
+steam.ru.qtlglb.com
 steam.tv
 steam-api.com
 steam-chat.com
@@ -13,5 +23,6 @@ steampowered.com
 steamserver.net
 steamstatic.com
 steamusercontent.com
+underlords.com
 valve.net
 valvesoftware.com

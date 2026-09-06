@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "last_reviewed": "2026-09-06",
+  "purpose": "Future opt-in routing profiles. This registry does not change a router configuration.",
+  "profiles": [
+    {
+      "id": "ai-all",
+      "name": "AI",
+      "domains": "ai-all.domains.txt",
+      "scope": "AI applications, accounts, APIs and exact delivery hostnames",
+      "default_enabled": false
+    },
+    {
+      "id": "games-all",
+      "name": "Games",
+      "domains": "games-all.domains.txt",
+      "scope": "Game launchers, publishers, accounts, games and exact CDN hostnames",
+      "default_enabled": false
+    },
+    {
+      "id": "work-and-privacy",
+      "name": "Work and privacy",
+      "domains": "work-and-privacy.domains.txt",
+      "scope": "Work tools, code platforms, collaboration and privacy services",
+      "default_enabled": false
+    }
+  ]
+}

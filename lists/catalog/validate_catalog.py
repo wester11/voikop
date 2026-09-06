@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ACTIVE_LIST = ROOT.parent / "podkop-full-services.txt"
+PROFILE_ROOT = ROOT.parent / "profiles"
 DOMAIN = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 PROFILE_STATES = frozenset(
     {"CONFIRMED", "EXTERNAL_GEO", "INTERMITTENT", "WATCHLIST", "EXISTING_COMMUNITY_LIST"}
@@ -73,6 +74,16 @@ def main() -> int:
                 )
             owners[value] = path
 
+    for path in sorted(PROFILE_ROOT.glob("*.domains.txt")):
+        values = entries(path)
+        seen: set[str] = set()
+        for value in values:
+            if not DOMAIN.fullmatch(value):
+                errors.append(f"profiles/{path.name}: invalid domain {value!r}")
+            if value in seen:
+                errors.append(f"profiles/{path.name}: duplicate {value}")
+            seen.add(value)
+
     profile_file = ROOT / "games" / "profiles.json"
     try:
         profiles = json.loads(profile_file.read_text(encoding="utf-8"))["profiles"]
@@ -110,11 +121,58 @@ def main() -> int:
             elif component == profile_id:
                 errors.append(f"games/profiles.json: {profile_id} cannot depend on itself")
 
+    games_all = PROFILE_ROOT / "games-all.domains.txt"
+    try:
+        games_all_entries = entries(games_all)
+    except OSError as exc:
+        errors.append(f"profiles/games-all.domains.txt: unavailable: {exc}")
+        games_all_entries = []
+    expected_games_all: list[str] = []
+    for path in sorted((ROOT / "games").glob("*.domains.txt")):
+        expected_games_all.extend(entries(path))
+    if len(games_all_entries) != len(set(games_all_entries)):
+        errors.append("profiles/games-all.domains.txt: duplicate domain")
+    if set(games_all_entries) != set(expected_games_all):
+        missing = sorted(set(expected_games_all) - set(games_all_entries))
+        extra = sorted(set(games_all_entries) - set(expected_games_all))
+        if missing:
+            errors.append("profiles/games-all.domains.txt: missing " + ", ".join(missing))
+        if extra:
+            errors.append("profiles/games-all.domains.txt: unknown " + ", ".join(extra))
+
+    registry_path = PROFILE_ROOT / "profiles.json"
+    try:
+        profile_registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        declared_profiles = profile_registry["profiles"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        errors.append(f"profiles/profiles.json: invalid registry: {exc}")
+        declared_profiles = []
+    profile_ids: set[str] = set()
+    for profile in declared_profiles:
+        if not isinstance(profile, dict):
+            errors.append("profiles/profiles.json: profile must be an object")
+            continue
+        profile_id = profile.get("id")
+        domain_file = profile.get("domains")
+        if not isinstance(profile_id, str) or not profile_id:
+            errors.append("profiles/profiles.json: profile with missing id")
+        elif profile_id in profile_ids:
+            errors.append(f"profiles/profiles.json: duplicate profile id {profile_id}")
+        else:
+            profile_ids.add(profile_id)
+        if not isinstance(domain_file, str) or not (PROFILE_ROOT / domain_file).is_file():
+            errors.append(f"profiles/profiles.json: invalid domain file for {profile_id!r}")
+        if profile.get("default_enabled") is not False:
+            errors.append(f"profiles/profiles.json: {profile_id!r} must default to disabled")
+
     if errors:
         print("Catalog validation failed:")
         print("\n".join(f"- {error}" for error in errors))
         return 1
-    print(f"Catalog valid: {len(files)} isolated service lists checked; no active-list overlaps.")
+    print(
+        f"Catalog valid: {len(files)} isolated service lists checked; "
+        f"games-all contains {len(games_all_entries)} exact game endpoints; no active-list overlaps."
+    )
     return 0
 
 
