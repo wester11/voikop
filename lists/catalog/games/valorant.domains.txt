@@ -1,0 +1,3 @@
+# VALORANT product endpoints; add riot-platform for sign-in and launcher traffic.
+playvalorant.com
+valorant.com

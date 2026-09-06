@@ -1,0 +1,4 @@
+# Command & Conquer publisher-owned endpoints. Compose with ea-app.
+cncrivals.com
+commandandconquer.com
+tiberiumalliances.com

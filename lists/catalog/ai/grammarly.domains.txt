@@ -1,0 +1,3 @@
+# Grammarly editor, account and API suffixes.
+grammarly.com
+grammarly.io

@@ -1,0 +1,2 @@
+# Blue Archive product endpoint; compose with a dedicated Nexon component if verified.
+bluearchive.nexon.com

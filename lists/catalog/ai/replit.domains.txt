@@ -1,0 +1,5 @@
+# Replit workspace, app and user-content domains.
+repl.co
+replit.com
+replit.dev
+replitusercontent.com

@@ -1,0 +1,2 @@
+# World of Warcraft product domains. Compose with battle-net.
+worldofwarcraft.com

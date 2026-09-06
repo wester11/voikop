@@ -1,0 +1,5 @@
+# xAI and Grok domains. X/Twitter itself remains excluded as already routed.
+grok.com
+grok.x.com
+grokipedia.com
+x.ai

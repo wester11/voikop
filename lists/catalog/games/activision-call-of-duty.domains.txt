@@ -1,0 +1,10 @@
+# Activision and Call of Duty endpoints, separate from Battle.net.
+activision.com
+callofduty.com
+callofdutyendowment.com
+callofdutyleague.com
+callofdutymobile.com
+demonware.net
+highmoonstudios.com
+infinityward.com
+ravensoftware.com

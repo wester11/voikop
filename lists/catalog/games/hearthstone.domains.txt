@@ -1,0 +1,2 @@
+# Hearthstone product domains. Compose with battle-net.
+playhearthstone.com

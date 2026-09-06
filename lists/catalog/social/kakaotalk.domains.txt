@@ -1,0 +1,12 @@
+# KakaoTalk account, chat and first-party delivery domains.
+# Provider-owned suffixes only; no generic Korean CDN ranges.
+daum.net
+daumcdn.net
+daumkakao.io
+kakao.com
+kakao.co.kr
+kakaocdn.net
+kakaocorp.com
+kakaotalk.jp
+kgslb.com
+onkakao.net

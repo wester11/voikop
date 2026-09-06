@@ -1,0 +1,5 @@
+# GOG Galaxy and store domains.
+gog.com
+gog-services.com
+gog-statics.com
+gogalaxy.com

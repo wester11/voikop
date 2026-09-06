@@ -1,0 +1,7 @@
+# Nintendo Account, eShop and Switch service domains.
+amiibo.com
+nintendo-europe.com
+nintendo.co.jp
+nintendo.com
+nintendo.net
+nintendoswitch.com

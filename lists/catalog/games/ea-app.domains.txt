@@ -1,0 +1,19 @@
+# EA account, EA app, store and publisher-owned shared endpoints.
+#
+# Product websites live in their own files, so a future route can combine
+# EA platform + one game without sending every EA game through a proxy.
+ea.com
+eaaccess.com
+eaassets.com
+eacashcard.com
+eacodigos.com
+eamobile.com
+eaplay.com
+easports.com
+eastore.com
+electronicarts.com
+origin.com
+origin.tv
+popcap.com
+pogo.com
+tnt-ea.com

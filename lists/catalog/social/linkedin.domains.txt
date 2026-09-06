@@ -1,0 +1,7 @@
+# LinkedIn web, short-link and static-content domains.
+bizographics.com
+licdn.com
+linkedin.at
+linkedin.cn
+linkedin.com
+lnkd.in

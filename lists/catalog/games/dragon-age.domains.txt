@@ -1,0 +1,3 @@
+# Dragon Age publisher-owned endpoints. Compose with ea-app.
+dragonage.com
+dragonagekeep.com

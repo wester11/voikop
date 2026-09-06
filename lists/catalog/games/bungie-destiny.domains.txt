@@ -1,0 +1,3 @@
+# Bungie, Destiny and companion endpoints.
+bungie.net
+destinythegame.com

@@ -1,0 +1,5 @@
+# League of Legends product endpoints; add riot-platform for client traffic.
+leagueoflegends.com
+leagueoflegends.net
+leagueoflegends.ru
+teamfighttactics.com

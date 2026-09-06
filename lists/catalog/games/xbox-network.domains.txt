@@ -1,0 +1,4 @@
+# Xbox, Game Pass and Xbox Live service domains.
+gamepass.com
+xbox.com
+xboxlive.com

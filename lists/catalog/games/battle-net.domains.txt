@@ -1,0 +1,7 @@
+# Battle.net, Blizzard and shared game service endpoints.
+battle.net
+battlenet.com
+blizzard.com
+blizzardgearstore.com
+blizzard.net
+blz-contentstack.com

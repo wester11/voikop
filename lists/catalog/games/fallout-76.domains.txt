@@ -1,0 +1,2 @@
+# Fallout 76 exact game endpoint. Do not route all Bethesda traffic by default.
+fallout.bethesda.net

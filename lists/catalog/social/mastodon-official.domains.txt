@@ -1,0 +1,4 @@
+# Official Mastodon project and flagship instances. Federation hosts are user-selected.
+joinmastodon.org
+mastodon.online
+mastodon.social

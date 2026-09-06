@@ -1,0 +1,2 @@
+# Ghost Recon Wildlands product domains. Compose with ubisoft-connect.
+ghostrecon.com

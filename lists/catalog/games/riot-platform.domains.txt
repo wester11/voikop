@@ -1,0 +1,10 @@
+# Riot client and shared account endpoints. Compose with a Riot game list.
+riot.com
+riot-games.com
+riotcdn.net
+riotgames.com
+riotgamesapi.com
+riotgames.net
+riotgamesstatus.com
+riotmobile.com
+riotstatic.com

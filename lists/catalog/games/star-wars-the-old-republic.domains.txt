@@ -1,0 +1,4 @@
+# Star Wars: The Old Republic publisher-owned endpoints. Compose with ea-app.
+starwarstheoldrepublic.com
+swtor.com
+swtor.net

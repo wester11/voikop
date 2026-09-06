@@ -1,0 +1,2 @@
+# Diablo IV product domains. Compose with battle-net.
+diablo4.com

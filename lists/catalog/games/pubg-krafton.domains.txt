@@ -1,0 +1,6 @@
+# PUBG and Krafton service domains.
+krafton.com
+kraftonde.com
+playbattlegrounds.com
+pubg.com
+pubgmobile.com

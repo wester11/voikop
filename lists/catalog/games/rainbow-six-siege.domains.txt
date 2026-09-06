@@ -1,0 +1,5 @@
+# Rainbow Six Siege product endpoints; add ubisoft-connect for authentication.
+rainbow6.com
+rainbow6game.com
+rainbowsix.com
+r6s.com

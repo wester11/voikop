@@ -1,0 +1,3 @@
+# Mistral AI console, API and provider-owned domains.
+mistral.ai
+mistralcdn.com

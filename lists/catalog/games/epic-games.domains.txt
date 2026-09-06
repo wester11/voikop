@@ -1,0 +1,12 @@
+# Epic Games launcher, services, Unreal and Easy Anti-Cheat endpoints.
+3lateral.com
+capturingreality.com
+cubicmotion.com
+easy.ac
+easyanticheat.net
+eac-cdn.com
+epicgames.com
+epicgames.dev
+epicgamescdn.com
+unrealengine.com
+unrealengine.dev

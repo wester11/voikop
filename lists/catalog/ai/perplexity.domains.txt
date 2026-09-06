@@ -1,0 +1,4 @@
+# Perplexity web, API and asset domains.
+perplexity.ai
+perplexity.com
+pplx.ai

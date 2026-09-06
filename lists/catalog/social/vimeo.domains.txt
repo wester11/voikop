@@ -1,0 +1,4 @@
+# Vimeo video, player and CDN-owned domains.
+vimeo.com
+vimeocdn.com
+vimeopro.com

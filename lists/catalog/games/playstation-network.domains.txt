@@ -1,0 +1,5 @@
+# PlayStation Network and Sony Entertainment Network domains.
+playstation.com
+playstation.net
+playstationnetwork.com
+sonyentertainmentnetwork.com

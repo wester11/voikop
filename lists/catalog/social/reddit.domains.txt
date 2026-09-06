@@ -1,0 +1,12 @@
+# Reddit web, media, account and static content domains.
+redd.it
+reddit.app.link
+reddit.com
+redditblog.com
+reddithelp.com
+redditinc.com
+redditmail.com
+redditmedia.com
+redditspace.com
+redditstatic.com
+redditstatus.com

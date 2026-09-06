@@ -1,0 +1,2 @@
+# Dead Space publisher-owned endpoint. Compose with ea-app.
+deadspacegame.com

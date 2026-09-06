@@ -1,0 +1,2 @@
+# Kick streaming platform domains.
+kick.com

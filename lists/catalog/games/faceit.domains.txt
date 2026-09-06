@@ -1,0 +1,3 @@
+# FACEIT competition platform and owned CDN domain.
+faceit.com
+faceit-cdn.net

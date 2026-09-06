@@ -1,0 +1,21 @@
+# Wargaming account, game, store and first-party delivery domains.
+#
+# The Wargaming-specific delivery domains below were verified on a Russian
+# router on 2026-08-30: routing them restored the in-game shop without routing
+# gameplay or changing its ping. ``gcore.com`` and ``gcdn.co`` are deliberately
+# not listed: they are shared CDN-provider suffixes, not Wargaming-only ones.
+masteroforion.com
+wargaming.com
+wargaming.net
+wgcdn.co
+wgcash.net
+wgcrowd.io
+wgdp.net
+wgncdn.co
+wgncdn.net
+worldofplanes.com
+worldoftanks.com
+worldoftanks.eu
+worldofwarplanes.com
+worldofwarships.com
+wotblitz.com

@@ -1,0 +1,2 @@
+# Ghost Recon Breakpoint product domains. Compose with ubisoft-connect.
+ghostreconbreakpoint.com

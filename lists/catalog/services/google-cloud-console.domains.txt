@@ -1,0 +1,4 @@
+# Google Cloud control plane only.  Customer-hosting suffixes such as
+# appspot.com, run.app and cloudfunctions.net are deliberately excluded.
+cloud.google.com
+googlecloud.com

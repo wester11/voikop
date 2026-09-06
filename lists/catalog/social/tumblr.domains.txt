@@ -1,0 +1,3 @@
+# Tumblr web and media domain.
+tumblr.com
+tumblr.net

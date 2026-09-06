@@ -1,0 +1,7 @@
+# Ubisoft account, launcher and shared service endpoints. Compose with a game list.
+ubi.com
+ubisoft.com
+ubisoftconnect.com
+uplay.com
+ubisoft.org
+ubisoftgroup.com

@@ -13,12 +13,27 @@ die() { printf '%s\n' "[VOID] ERROR: $*" >&2; exit 1; }
 
 WORK_DIR=''
 ACTIVATION_CODE=''
+INPUT_ECHO_DISABLED=0
 cleanup() {
+    if [ "$INPUT_ECHO_DISABLED" = 1 ]; then
+        stty echo 2>/dev/null || true
+        INPUT_ECHO_DISABLED=0
+    fi
     [ -z "$WORK_DIR" ] || rm -rf "$WORK_DIR"
     ACTIVATION_CODE=''
-    unset ACTIVATION_CODE VOID_ENROLLMENT_CODE 2>/dev/null || true
+    unset ACTIVATION_CODE 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
+
+usage() {
+    printf '%s\n' 'Usage: install.sh --enroll-stdin'
+}
+
+case "${1:-}" in
+    --enroll-stdin) ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
 
 [ "$(id -u)" = '0' ] || die 'Run as root.'
 [ -r /etc/openwrt_release ] || die 'This installer supports OpenWrt only.'
@@ -56,14 +71,17 @@ BOARD="$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.board_name' 2>/dev/null ||
 MODEL="$(printf '%s' "$BOARD_JSON" | jsonfilter -e '@.model' 2>/dev/null || true)"
 [ -n "$BOARD" ] || die 'Cannot determine router board name.'
 
-ACTIVATION_CODE="${VOID_ENROLLMENT_CODE:-}"
-if [ -z "$ACTIVATION_CODE" ]; then
-    printf 'Activation code: '
-    stty -echo 2>/dev/null || true
-    IFS= read -r ACTIVATION_CODE || true
+# The caller supplies the short-lived enrollment secret on stdin.  Never read
+# it from argv or an environment variable: both are commonly exposed via
+# process inspection, support screenshots and shell diagnostics.
+say 'Вставьте ключ ORBIT из личного кабинета ниже и нажмите Enter:'
+stty -echo 2>/dev/null && INPUT_ECHO_DISABLED=1 || true
+IFS= read -r ACTIVATION_CODE || true
+if [ "$INPUT_ECHO_DISABLED" = 1 ]; then
     stty echo 2>/dev/null || true
-    printf '\n'
+    INPUT_ECHO_DISABLED=0
 fi
+printf '\n'
 [ "${#ACTIVATION_CODE}" -eq 47 ] || die 'Invalid activation code.'
 case "$ACTIVATION_CODE" in ve1_*) ;; *) die 'Invalid activation code.' ;; esac
 [ -z "$(printf '%s' "$ACTIVATION_CODE" | tr -d 'A-Za-z0-9_-')" ] || die 'Invalid activation code.'
@@ -269,6 +287,13 @@ uci set firewall.void_block_wan_ssh.src='wan'
 uci set firewall.void_block_wan_ssh.proto='tcp'
 uci set firewall.void_block_wan_ssh.dest_port='22'
 uci set firewall.void_block_wan_ssh.target='REJECT'
+uci -q delete firewall.void_block_wan_admin || true
+uci set firewall.void_block_wan_admin=rule
+uci set firewall.void_block_wan_admin.name='VOID: deny LuCI from WAN'
+uci set firewall.void_block_wan_admin.src='wan'
+uci set firewall.void_block_wan_admin.proto='tcp'
+uci set firewall.void_block_wan_admin.dest_port='80 443'
+uci set firewall.void_block_wan_admin.target='REJECT'
 uci commit firewall
 /etc/init.d/firewall restart
 /etc/init.d/void-mgmt enable
@@ -321,7 +346,7 @@ done
 [ "$COMPLETE_OK" = 1 ] || die "Remote SSH verification failed (HTTP ${HTTP_CODE:-unavailable})."
 
 ACTIVATION_CODE=''
-unset ACTIVATION_CODE VOID_ENROLLMENT_CODE 2>/dev/null || true
+unset ACTIVATION_CODE 2>/dev/null || true
 say "SUCCESS: $SUBSCRIPTION_NAME is connected to ORBIT."
 say 'Your existing Podkop and VPN configuration were not changed.'
 say 'Management: key-only SSH over a dedicated WireGuard tunnel is active.'

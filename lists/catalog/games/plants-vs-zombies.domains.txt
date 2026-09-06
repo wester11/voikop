@@ -1,0 +1,4 @@
+# Plants vs. Zombies publisher-owned endpoints. Compose with ea-app.
+plantsvszombies2.com
+pvzgw2.com
+pvzheroes.com

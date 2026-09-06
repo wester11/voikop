@@ -1,0 +1,6 @@
+# Copilot-specific endpoints only; intentionally does not route all Bing or Microsoft traffic.
+copilot.cloud.microsoft
+copilot.microsoft
+copilot.microsoft.com
+edgeservices.bing.com
+sydney.bing.com

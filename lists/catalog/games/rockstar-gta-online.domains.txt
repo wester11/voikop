@@ -1,0 +1,6 @@
+# Rockstar Games, Social Club and GTA Online endpoints.
+rockstargames.com
+rockstargames.net
+rockstarnorth.com
+rsg.ms
+rsg.sc

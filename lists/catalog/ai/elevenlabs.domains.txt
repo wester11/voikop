@@ -1,0 +1,4 @@
+# ElevenLabs application, API and account domains.
+elevenlabs.ai
+elevenlabs.com
+elevenlabs.io

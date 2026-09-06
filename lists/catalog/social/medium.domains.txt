@@ -1,0 +1,4 @@
+# Medium publishing and image-delivery domains.
+medium.com
+medium.systems
+mediumusercontent.com

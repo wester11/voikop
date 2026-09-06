@@ -1,0 +1,3 @@
+# Mass Effect publisher-owned endpoints. Compose with ea-app.
+masseffect.com
+masseffectarchives.com

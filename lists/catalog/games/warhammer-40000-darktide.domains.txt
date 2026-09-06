@@ -1,0 +1,5 @@
+# Darktide and Fatshark-owned product domains.
+darktide.live
+fatshark.se
+fatsharkgames.com
+playdarktide.com

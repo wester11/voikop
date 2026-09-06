@@ -1,0 +1,2 @@
+# Overwatch 2 product domains. Compose with battle-net.
+playoverwatch.com

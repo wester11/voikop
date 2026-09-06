@@ -1,0 +1,3 @@
+# Midjourney application and asset domains.
+midjourney.com
+midjourneycdn.com

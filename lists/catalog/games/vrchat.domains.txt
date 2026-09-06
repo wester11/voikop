@@ -1,0 +1,3 @@
+# VRChat application, API and content domains.
+vrchat.com
+vrchat.net

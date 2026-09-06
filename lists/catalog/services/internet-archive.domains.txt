@@ -1,0 +1,4 @@
+# Internet Archive, Open Library and Archive-It first-party suffixes.
+archive-it.org
+archive.org
+openlibrary.org

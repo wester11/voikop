@@ -1,0 +1,17 @@
+# Steam client, store, community, content and chat endpoints.
+playartifact.com
+s.team
+steam.tv
+steam-api.com
+steam-chat.com
+steamcommunity.com
+steamcontent.com
+steamconnecttest.com
+steamdeck.com
+steamgames.com
+steampowered.com
+steamserver.net
+steamstatic.com
+steamusercontent.com
+valve.net
+valvesoftware.com

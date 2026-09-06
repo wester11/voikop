@@ -1,0 +1,7 @@
+# FaceTime signalling, registration and Apple Push Notification endpoints.
+# Kept to FaceTime-specific Apple hostnames: routing apple.com would catch
+# unrelated Apple web, update and account traffic.
+facetime.apple.com
+facetime.ess.apple.com
+push.apple.com
+register.apple.com

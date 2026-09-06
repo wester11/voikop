@@ -1,0 +1,4 @@
+# imo messenger application, account and delivery domains.
+imo.im
+imoapp.com
+imofriends.com

@@ -1,0 +1,9 @@
+# Twitch playback, chat and static-content domains; no broad CloudFront range.
+ext-twitch.tv
+jtvnw.net
+live-video.net
+ttvnw.net
+twitch.tv
+twitchcdn.net
+twitchcon.com
+twitchsvc.net

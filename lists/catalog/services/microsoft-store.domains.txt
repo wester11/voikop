@@ -1,0 +1,8 @@
+# Microsoft-published Microsoft Store API and content-control endpoints.
+# Do not add generic microsoft.com, windows.net or Azure/CDN suffixes.
+displaycatalog.mp.microsoft.com
+licensing.mp.microsoft.com
+livetileedge.dsx.mp.microsoft.com
+purchase.md.mp.microsoft.com
+storecatalogrevocation.storequality.microsoft.com
+storeedgefd.dsx.mp.microsoft.com

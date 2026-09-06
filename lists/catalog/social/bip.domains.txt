@@ -1,0 +1,3 @@
+# BiP messenger first-party web and application domains.
+bip.com
+bip.com.tr

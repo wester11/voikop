@@ -1,0 +1,21 @@
+# Pinterest web, image and short-link domains.
+pin.it
+pinimg.com
+pinterest.at
+pinterest.be
+pinterest.ca
+pinterest.ch
+pinterest.cl
+pinterest.co
+pinterest.co.uk
+pinterest.com
+pinterest.de
+pinterest.es
+pinterest.fr
+pinterest.info
+pinterest.it
+pinterest.jp
+pinterest.net
+pinterest.ph
+pinterest.pt
+pinterest.ru

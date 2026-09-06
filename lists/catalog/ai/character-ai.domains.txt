@@ -1,0 +1,3 @@
+# Character.AI web and account domains.
+character.ai
+characterai.io

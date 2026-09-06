@@ -1,0 +1,2 @@
+# Wuthering Waves product endpoint; parent publisher traffic is intentionally not broadened.
+wutheringwaves.kurogames.com

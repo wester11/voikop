@@ -1,0 +1,3 @@
+# Battlestate Games and Escape from Tarkov service domains.
+battlestategames.com
+escapefromtarkov.com

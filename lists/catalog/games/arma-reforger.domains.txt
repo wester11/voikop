@@ -1,0 +1,2 @@
+# Arma Reforger product domains. Compose with the bohemia shared list when needed.
+armareforger.com

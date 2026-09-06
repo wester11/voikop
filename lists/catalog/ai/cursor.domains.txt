@@ -1,0 +1,5 @@
+# Cursor editor, API and content delivery domains.
+cursor-cdn.com
+cursor.com
+cursor.sh
+cursorapi.com

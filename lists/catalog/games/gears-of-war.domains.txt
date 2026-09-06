@@ -1,0 +1,2 @@
+# Gears of War product domain; compose with xbox-network only when required.
+gearsofwar.com

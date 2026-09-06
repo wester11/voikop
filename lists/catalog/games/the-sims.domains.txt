@@ -1,0 +1,6 @@
+# The Sims publisher-owned endpoints. Compose with ea-app.
+mysims.com
+thesims.com
+thesims3.com
+thesims4.com
+thesimssocial.com

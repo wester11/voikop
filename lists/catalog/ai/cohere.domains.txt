@@ -1,0 +1,3 @@
+# Cohere product and API domains.
+cohere.ai
+cohere.com

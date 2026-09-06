@@ -1,0 +1,4 @@
+# Battlefield product endpoints; add ea-app for account and launcher traffic.
+battlefield.com
+battlefield2042.com
+battlefieldbadcompany2.com

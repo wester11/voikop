@@ -1,0 +1,3 @@
+# Replicate API, web console and prediction-delivery domains.
+replicate.com
+replicate.delivery

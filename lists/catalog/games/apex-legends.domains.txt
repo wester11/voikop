@@ -1,0 +1,2 @@
+# Apex Legends product endpoints; add ea-app for account and launcher traffic.
+apexlegends.com

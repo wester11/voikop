@@ -1,0 +1,5 @@
+# Hugging Face Hub, spaces and short-link domains.
+hf.co
+hf.space
+huggingface.co
+huggingfaceusercontent.com

@@ -1,0 +1,4 @@
+# DeepSeek web, API and account domains.
+deepseek.com
+deepseek.ai
+deepseekapi.com

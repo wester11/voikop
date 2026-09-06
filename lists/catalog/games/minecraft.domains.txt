@@ -1,0 +1,8 @@
+# Minecraft and Mojang services; does not include shared Xbox authentication.
+callersbane.com
+minecraft-services.net
+minecraft.net
+minecraftservices.com
+minecraftshop.com
+mojang.com
+mojangstudios.com

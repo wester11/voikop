@@ -1,0 +1,2 @@
+# Arknights product domain.
+arknights.global
