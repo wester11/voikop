@@ -19,12 +19,14 @@ route.
 - Do not add broad CDN, cloud, hosting, search, or IP-address ranges just
   because a service happens to use one today. Those networks are shared and
   change often.
-- `networks/` is intentionally documentation-only until a provider publishes a
-  stable, service-scoped CIDR range.  A domain route can follow DNS changes;
-  hard-coded CDN ranges cannot.
+- `networks/` contains only provider-published, service-scoped CIDR ranges.
+  Telegram is currently the sole entry with an official CIDR document; shared
+  CDN ranges remain excluded. A domain route can follow DNS changes; hard-coded
+  CDN ranges cannot.
 - The catalog must not duplicate the currently active
-  `../podkop-full-services.txt` list.  It also intentionally excludes the
-  existing Podkop/Forkop community categories: YouTube, Telegram, Meta,
+  `../podkop-full-services.txt` list. It intentionally excludes the existing
+  Podkop/Forkop community categories except for the explicitly documented
+  Telegram catalog entry: YouTube, Meta,
   Discord, X/Twitter, TikTok, Google AI, Google Play, Roblox, Cloudflare,
   CloudFront, DigitalOcean, Hetzner, OVH, and the regional lists.
 - An entry is not a claim that a service is officially blocked in Russia.  It

@@ -9,6 +9,8 @@ is a discovery source, not authority for routing policy:
 - <https://github.com/v2fly/domain-list-community/tree/master/data>
 - Podkop/Forkop upstream regional coverage and the active conservative service
   additions: <https://github.com/itdoginfo/allow-domains>
+- Telegram service domains: <https://github.com/itdoginfo/allow-domains/blob/main/Services/telegram.lst>
+- Telegram service CIDRs: <https://core.telegram.org/resources/cidr.txt>
 - Microsoft Store endpoint requirements: <https://learn.microsoft.com/en-us/intune/fundamentals/endpoints>
 - Ubisoft connectivity help: <https://www.ubisoft.com/en-us/help/connectivity-and-performance>
 - The Division status: <https://www.ubisoft.com/en-us/game/the-division/the-division-2/status>
