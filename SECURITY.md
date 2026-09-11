@@ -1,32 +1,34 @@
-# Security policy
+# Политика безопасности
 
-Security is a property of the whole ORBIT control plane, not only of the
-bootstrap script. This repository is public so the protocol, validation and
-local changes can be reviewed independently.
+Безопасность ORBIT — это свойство всей управляющей плоскости, а не только
+bootstrap-скрипта. Репозиторий открыт, чтобы протокол, проверки и локальные
+изменения можно было независимо изучать и проверять.
 
-## Report privately
+## Сообщить о проблеме конфиденциально
 
-If you find a vulnerability or suspect a leaked secret, contact VOID support
-privately. Do not open a public issue with any of the following:
+Если вы нашли уязвимость или подозреваете утечку секрета, напишите в поддержку
+VOID приватно. Не создавайте публичный issue с такими данными:
 
-- activation or refresh codes;
-- subscription URLs or router configuration;
-- device identifiers, management IPs or private keys;
-- logs or screenshots containing credentials.
+- кодами активации или обновления;
+- ссылками на подписки или конфигурацией роутера;
+- идентификаторами устройств, management-IP или приватными ключами;
+- логами и скриншотами, на которых видны учётные данные.
 
-Include the affected component, a short impact description and safe reproduction
-steps. Redact all live values before sharing diagnostics.
+В сообщении укажите затронутый компонент, кратко опишите потенциальный ущерб и
+приложите безопасные шаги воспроизведения. Перед отправкой диагностики удалите
+все действующие значения, токены и адреса доступа.
 
-## Security invariants
+## Ключевые гарантии
 
-The bootstrap must keep these invariants:
+Bootstrap должен сохранять следующие гарантии:
 
-1. Enrollment accepts a short-lived, single-use activation code — never a
-   password, arbitrary subscription URL or shared fleet secret.
-2. Every management tunnel and support SSH credential is unique to one device.
-3. Management connectivity is separated from the owner's VPN data plane.
-4. A failed compatibility, validation or handshake check must stop the install;
-   it must not silently fall back to an unprotected mode.
+1. Подключение принимает короткоживущий одноразовый код — не пароль, случайную
+   ссылку на подписку и не общий секрет для всего парка.
+2. Каждый management-туннель и SSH-ключ поддержки принадлежат ровно одному
+   устройству.
+3. Управляющее соединение отделено от пользовательской VPN-маршрутизации.
+4. Ошибка совместимости, проверки или handshake останавливает установку; система
+   не должна незаметно переходить в незащищённый режим.
 
-Changes that weaken any invariant require review in the private support channel
-before release.
+Изменения, ослабляющие любую из этих гарантий, должны пройти проверку в
+закрытом канале поддержки до публикации релиза.
