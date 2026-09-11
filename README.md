@@ -1,6 +1,8 @@
+<h1 align="center">VOID / ORBIT</h1>
+
 <p align="center">
-  <strong>VOID / ORBIT</strong><br>
-  <sub>secure control plane for OpenWrt routers</sub>
+  <strong>Secure control plane for OpenWrt routers</strong><br>
+  <sub>private management · per-device identity · outbound-only connectivity</sub>
 </p>
 
 <p align="center">
@@ -9,8 +11,6 @@
   <img alt="Security model" src="https://img.shields.io/badge/identity-per--device-8b5cf6?style=flat-square">
   <img alt="Access" src="https://img.shields.io/badge/management-outbound--only-111827?style=flat-square">
 </p>
-
-# ORBIT
 
 ORBIT — управляющий контур для роутеров VOID на OpenWrt. Он создаёт отдельную
 защищённую плоскость управления для каждого устройства: без публичного SSH,
@@ -25,6 +25,13 @@ ORBIT — управляющий контур для роутеров VOID на 
 | identity устройства и служебный канал | VPN-подписку владельца |
 | безопасную выдачу доступа поддержке | пользовательский пароль OpenWrt |
 | контроль состояния и управляемости | выбранный профиль Podkop / Forkop |
+
+<p align="center">
+  <code>1 router</code>&nbsp; · &nbsp;<code>1 identity</code>&nbsp; · &nbsp;<code>0 public management ports</code>
+</p>
+
+> ORBIT делает служебный доступ управляемым, проверяемым и отзывным — без
+> вмешательства в пользовательскую VPN-схему.
 
 ```text
              одноразовое разрешение
@@ -108,6 +115,25 @@ ORBIT предназначен для устройств, которые уже 
 подключения выпускается из ORBIT или закрытой панели поддержки для конкретного
 роутера. Она привязана к версии bootstrap и не должна редактироваться,
 публиковаться или передаваться третьим лицам.
+
+<details>
+<summary><strong>Для владельца роутера</strong></summary>
+
+Вы сохраняете контроль над паролем root, LuCI и выбранным VPN-профилем. ORBIT
+добавляет только отдельный служебный канал: он нужен для диагностики,
+обновлений и поддержки, но не является заменой вашей подписки или домашней
+сети.
+
+</details>
+
+<details>
+<summary><strong>Для оператора VOID</strong></summary>
+
+У каждого устройства есть собственная identity и наблюдаемый жизненный цикл:
+выдача, enrollment, handshake, состояние и отзыв. Это позволяет отзывать один
+роутер точечно, не затрагивая остальные устройства.
+
+</details>
 
 Для владельца это даёт понятную модель: у роутера есть личная конфигурация VPN,
 а у ORBIT — отдельный наблюдаемый служебный канал. Канал существует, пока
