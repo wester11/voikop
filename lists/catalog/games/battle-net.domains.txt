@@ -1,5 +1,7 @@
 # Battle.net, Blizzard and shared game service endpoints.
 # Blizzard account, launcher, game and first-party content endpoints.
+# Exact delivery names from domain-list-community; broad Akamai routing remains
+# intentionally excluded.
 battle.net
 blizzard.com
 blizzardgearstore.com
@@ -14,3 +16,12 @@ starcraft.com
 starcraft2.com
 battlenet.com
 blizzard.net
+blizzard.nefficient.co.kr
+blzddist1-a.akamaihd.net
+blzddistkr1-a.akamaihd.net
+bnetcmsus-a.akamaihd.net
+bnetproduct-a.akamaihd.net
+bnetshopus.akamaized.net
+blizzcon-a.akamaihd.net
+blzmedia-a.akamaihd.net
+blznav.akamaized.net

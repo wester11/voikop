@@ -31,6 +31,8 @@ is a discovery source, not authority for routing policy:
 - Epic Games provider and exact CDN endpoints: <https://github.com/v2ray/domain-list-community/blob/master/data/epicgames>
 - Script Hook V official distribution page: <https://www.dev-c.com/gtav/scripthookv/>
 - Rockstar Games provider and exact CDN endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/rockstar>
+- Blizzard and Battle.net exact delivery endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/blizzard>
+- Ubisoft Connect exact delivery and cloud-save endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/ubisoft>
 
 For every future change:
 

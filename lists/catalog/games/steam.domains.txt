@@ -1,16 +1,30 @@
 # Steam client, store, community, content and chat endpoints.
+# Exact delivery hosts from the current domain-list-community Steam dataset.
+# They are intentionally individual hosts, never Akamai/Huawei CDN suffixes.
+a4e8s8k3.map2.ssl.hwcdn.net
 dota2.com
 edge.steam-dns.top.comcast.net
+f3b7q2p3.ssl.hwcdn.net
 playartifact.com
 s.team
+steamcdn-a.akamaihd.net
+steamcommunity-a.akamaihd.net
+steamcommunity-a.akamaihd.net.edgesuite.net
+steambroadcast.akamaized.net
+steamcloudsweden.blob.core.windows.net
 steam.apac.qtlglb.com
 steam.cdn.on.net
 steam.cdn.orcon.net.nz
 steam.cdn.slingshot.co.nz
 steam.cdn.webra.ru
 steam.eca.qtlglb.com
+steammobile.akamaized.net
 steam.naeu.qtlglb.com
+steampipe-kr.akamaized.net
+steampipe-partner.akamaized.net
+steampipe.akamaized.net
 steam.ru.qtlglb.com
+steamstore-a.akamaihd.net
 steam.tv
 steam-api.com
 steam-chat.com
@@ -22,7 +36,11 @@ steamgames.com
 steampowered.com
 steamserver.net
 steamstatic.com
+steamugcquincy.blob.core.windows.net
+steamusercontent-a.akamaihd.net
 steamusercontent.com
+steamuserimages-a.akamaihd.net
+steamvideo-a.akamaihd.net
 underlords.com
 valve.net
 valvesoftware.com

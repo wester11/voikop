@@ -5,19 +5,25 @@
 # in the active VOID full-services list.  This file is not read by ORBIT,
 # Forkop or Podkop until an explicit profile integration is made.
 #
-# Review date: 2026-09-06
+# Review date: 2026-09-12
 accounts.google.com
 ai.google.dev
 aida.googleapis.com
 aistudio.google.com
+aisandbox-pa.googleapis.com
 alkalicore-pa.clients6.google.com
 alkalimakersuite-pa.clients6.google.com
+antigravity-pa.googleapis.com
+antigravity-unleash.goog
+antigravity.google
+antigravity.googleapis.com
 anthropic.com
 bard.google.com
 character.ai
 characterai.io
 chat.com
 chatgpt.com
+chatgpt.livekit.cloud
 clau.de
 claude.ai
 claude.com
@@ -36,6 +42,7 @@ cursor.sh
 cursorapi.com
 deepmind.com
 deepmind.google
+firebaseinstallations.googleapis.com
 deepseek.ai
 deepseek.com
 deepseekapi.com
@@ -63,6 +70,9 @@ huggingfaceusercontent.com
 krea.ai
 leonardo.ai
 lmarena.ai
+jules.google
+jules.google.com
+labs.google
 makersuite.google.com
 midjourney.com
 midjourneycdn.com
@@ -71,8 +81,14 @@ mistralcdn.com
 notebooklm.google
 notebooklm.google.com
 oaistatic.com
+oaistatsig.com
 oaiusercontent.com
 openai.com
+openaiapi-site.azureedge.net
+openaiassets.blob.core.windows.net
+openaicom-api-bdcpf8c6d2e9atf6.z01.azurefd.net
+openaicom.imgix.net
+openaicomproductionae4b.blob.core.windows.net
 openrouter.ai
 perplexity.ai
 perplexity.com
@@ -80,6 +96,7 @@ poe.com
 poecdn.net
 pplx.ai
 proactivebackend-pa.googleapis.com
+production-openaicom-storage.azureedge.net
 repl.co
 replicate.com
 replicate.delivery
@@ -94,6 +111,9 @@ sora.com
 stability.ai
 stabilitycdn.com
 sydney.bing.com
+servd-anthropic-website.b-cdn.net
+speechs3proto2-pa.googleapis.com
+stitch.withgoogle.com
 v0.app
 v0.dev
 x.ai
