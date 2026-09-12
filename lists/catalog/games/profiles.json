@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_reviewed": "2026-08-30",
+  "last_reviewed": "2026-09-12",
   "purpose": "Inactive candidate routing profiles. Nothing in this file is applied to a router.",
   "profiles": [
     {"id":"steam","name":"Steam","status":"WATCHLIST","domains":"steam.domains.txt","components":[],"cause":["platform"],"evidence":"provider_domains"},
@@ -63,6 +63,7 @@
     {"id":"escape-from-tarkov","name":"Escape from Tarkov","status":"WATCHLIST","domains":"escape-from-tarkov.domains.txt","components":[],"cause":["reported_network"],"evidence":"provider_domains"},
     {"id":"pubg","name":"PUBG","status":"INTERMITTENT","domains":"pubg-krafton.domains.txt","components":["steam","epic-games"],"cause":["network_route","cdn"],"evidence":"provider_domains"},
     {"id":"gta-online","name":"GTA Online","status":"WATCHLIST","domains":"rockstar-gta-online.domains.txt","components":[],"cause":["reported_network"],"evidence":"provider_domains"},
+    {"id":"gta-v-scripthook","name":"GTA V / Script Hook V","status":"WATCHLIST","domains":"gta-v-scripthook.domains.txt","components":[],"cause":["official_download"],"evidence":"first_party_download"},
     {"id":"destiny-2","name":"Destiny 2","status":"WATCHLIST","domains":"bungie-destiny.domains.txt","components":["steam","epic-games","playstation-network","xbox-network"],"cause":["reported_network","udp"],"evidence":"official_network_guide"},
     {"id":"war-thunder","name":"War Thunder","status":"WATCHLIST","domains":"gaijin-war-thunder.domains.txt","components":[],"cause":["reported_network"],"evidence":"provider_domains"},
     {"id":"faceit","name":"FACEIT","status":"INTERMITTENT","domains":"faceit.domains.txt","components":[],"cause":["network_route","cdn"],"evidence":"provider_domains"},

@@ -4,3 +4,8 @@ rockstargames.net
 rockstarnorth.com
 rsg.ms
 rsg.sc
+# Exact Rockstar CDN hostnames published in domain-list-community.  Do not
+# replace these with an Akamai suffix or CIDR — that would route other tenants.
+gamedownloads-rockstargames-com.akamaized.net
+media-rockstargames-com.akamaized.net
+videos-rockstargames-com.akamaized.net

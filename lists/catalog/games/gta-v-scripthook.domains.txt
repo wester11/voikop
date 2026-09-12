@@ -1,0 +1,5 @@
+# Script Hook V official distribution endpoint.
+# The current origin IP is shared hosting and is intentionally not pinned:
+# route the provider-owned suffix so downloads keep working after DNS changes.
+# Source: https://www.dev-c.com/gtav/scripthookv/
+dev-c.com

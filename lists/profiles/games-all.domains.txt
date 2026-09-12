@@ -1,6 +1,6 @@
 # VOIKOP profile: All catalogued games
 #
-# Generated from lists/catalog/games on 2026-09-06. This opt-in, future-use
+# Generated from lists/catalog/games on 2026-09-12. This opt-in, future-use
 # profile combines publisher, launcher, game, account and exact CDN endpoints.
 # It is not fetched or enabled by ORBIT, Podkop, Forkop or ZeroBlock today.
 activision.com
@@ -9,6 +9,7 @@ callofdutyendowment.com
 callofdutyleague.com
 callofdutymobile.com
 demonware.net
+dev-c.com
 highmoonstudios.com
 infinityward.com
 ravensoftware.com
@@ -200,6 +201,9 @@ rockstargames.net
 rockstarnorth.com
 rsg.ms
 rsg.sc
+gamedownloads-rockstargames-com.akamaized.net
+media-rockstargames-com.akamaized.net
+videos-rockstargames-com.akamaized.net
 starwarstheoldrepublic.com
 swtor.com
 swtor.net

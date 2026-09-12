@@ -1,6 +1,6 @@
 # Sources and review method
 
-Last reviewed: 2026-09-06.
+Last reviewed: 2026-09-12.
 
 The catalog starts from provider-owned suffix domains and is cross-checked
 against the maintained `domain-list-community` service datasets.  That project
@@ -29,13 +29,17 @@ is a discovery source, not authority for routing policy:
 - Wargaming store-route verification: internal Russian-router test, 2026-08-30.
 - Dead by Daylight client endpoint: <https://forums.bhvr.com/dead-by-daylight/discussion/363400/does-anyone-know-where-to-find-a-api-documentation-for-bhvrdbd-com>
 - Epic Games provider and exact CDN endpoints: <https://github.com/v2ray/domain-list-community/blob/master/data/epicgames>
+- Script Hook V official distribution page: <https://www.dev-c.com/gtav/scripthookv/>
+- Rockstar Games provider and exact CDN endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/rockstar>
 
 For every future change:
 
 1. Prefer a provider-owned root or a provider-published exact endpoint.
 2. Check it is not already in `../podkop-full-services.txt` and does not
    belong to an existing Podkop/Forkop community category.
-3. Do not copy shared Akamai, AWS, CloudFront, Azure, Fastly, Cloudflare or
-   other CDN CIDRs into a service list.
+3. Do not copy shared Akamai, AWS, CloudFront, Azure, Fastly, Cloudflare,
+   shared-hosting or other provider CIDRs into a service list. Use a verified
+   provider-owned domain instead, unless the service publishes a dedicated
+   service-scoped network range.
 4. Test a proposed profile against the relevant app, launcher and web login on
    a disposable router configuration before enabling it for customers.
