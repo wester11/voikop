@@ -1,0 +1,12 @@
+# Netflix service endpoints.  This is an inactive candidate list.
+# The Netflix-owned delivery suffixes are kept explicit; shared AWS/CDN
+# ranges and Netflix DNS test hosts are intentionally excluded.
+netflix.com
+netflix.net
+nflxext.com
+nflximg.com
+nflximg.net
+nflxsearch.net
+nflxso.net
+nflxvideo.net
+netflix.com.edgesuite.net

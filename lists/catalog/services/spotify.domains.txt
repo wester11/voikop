@@ -1,0 +1,18 @@
+# Spotify service endpoints.  This is an inactive candidate list.
+# Only Spotify-owned suffixes and provider-published, service-specific CDN
+# hostnames are included; generic Akamai/Fastly infrastructure is excluded.
+spotify.com
+spotifycdn.com
+spotifycdn.net
+scdn.co
+pscdn.co
+spoti.fi
+spotify.link
+spotify-everywhere.com
+spotifycharts.com
+spotifycodes.com
+audio-ak-spotify-com.akamaized.net
+audio4-ak-spotify-com.akamaized.net
+heads-ak-spotify-com.akamaized.net
+heads4-ak-spotify-com.akamaized.net
+spotify.com.edgesuite.net
