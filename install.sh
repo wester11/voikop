@@ -248,6 +248,72 @@ stop() { ip link del void_mgmt 2>/dev/null || true; }
 MGMT_INIT
 chmod 700 /etc/init.d/void-mgmt
 
+# Cron is a useful secondary recovery path, but it can itself be delayed or
+# stopped by a package failure.  Keep a tiny procd-supervised guard as the
+# primary self-healer for the *management interface only*.  It never touches
+# WAN, DNS, firewall, Podkop or FORKOP.
+cat > /usr/libexec/void-mgmt-guard <<'MGMT_GUARD'
+#!/bin/sh
+set -u
+UP='/usr/libexec/void-mgmt-up'
+MAX_AGE=240
+EVENT_LOG='/etc/void-router/orbit-mgmt-events.log'
+TICKS=0
+event() {
+    [ -f "$EVENT_LOG" ] && [ "$(wc -c <"$EVENT_LOG")" -gt 65536 ] && {
+        tail -n 240 "$EVENT_LOG" >"$EVENT_LOG.next" 2>/dev/null || true
+        mv -f "$EVENT_LOG.next" "$EVENT_LOG" 2>/dev/null || true
+    }
+    printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" >>"$EVENT_LOG" 2>/dev/null || true
+    logger -t ORBIT-mgmt "$1" 2>/dev/null || true
+}
+heal() {
+    reason="$1"
+    event "repair_start reason=$reason"
+    if "$UP" >/dev/null 2>&1; then event 'repair_ok'; else event 'repair_failed'; fi
+}
+check_once() {
+    ip link show dev void_mgmt >/dev/null 2>&1 || { heal interface_missing; return; }
+    NOW="$(date +%s)"
+    LAST="$(wg show void_mgmt latest-handshakes 2>/dev/null | awk '$2 > 0 { print $2; exit }')"
+    case "$LAST" in ''|*[!0-9]*) heal handshake_missing; return ;; esac
+    [ $((NOW - LAST)) -le "$MAX_AGE" ] || heal "handshake_stale age=$((NOW - LAST))"
+}
+case "${1:-loop}" in
+    once) check_once ;;
+    loop)
+        while :; do
+            TICKS=$((TICKS + 1))
+            check_once
+            if [ $((TICKS % 5)) -eq 0 ]; then
+                NOW="$(date +%s)"
+                LAST="$(wg show void_mgmt latest-handshakes 2>/dev/null | awk '$2 > 0 { print $2; exit }')"
+                case "$LAST" in
+                    ''|*[!0-9]*) event 'status handshake_missing' ;;
+                    *) event "status handshake_age=$((NOW - LAST))" ;;
+                esac
+            fi
+            sleep 60
+        done
+        ;;
+    *) exit 2 ;;
+esac
+MGMT_GUARD
+chmod 700 /usr/libexec/void-mgmt-guard
+
+cat > /etc/init.d/void-mgmt-guard <<'MGMT_GUARD_INIT'
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+start_service() {
+    procd_open_instance
+    procd_set_param command /usr/libexec/void-mgmt-guard loop
+    procd_set_param respawn 3600 5 5
+    procd_close_instance
+}
+MGMT_GUARD_INIT
+chmod 700 /etc/init.d/void-mgmt-guard
+
 cat > /etc/hotplug.d/iface/99-void-mgmt <<'MGMT_HOTPLUG'
 #!/bin/sh
 [ "$ACTION" = ifup ] || exit 0
@@ -297,7 +363,9 @@ uci set firewall.void_block_wan_admin.target='REJECT'
 uci commit firewall
 /etc/init.d/firewall restart
 /etc/init.d/void-mgmt enable
+/etc/init.d/void-mgmt-guard enable
 /usr/libexec/void-mgmt-up
+/etc/init.d/void-mgmt-guard restart
 
 touch /etc/crontabs/root
 grep -Ev '/usr/bin/void-router-refresh|/usr/libexec/void-mgmt-up|/usr/libexec/void-mgmt-heartbeat' /etc/crontabs/root > "$WORK_DIR/root.cron" || true
