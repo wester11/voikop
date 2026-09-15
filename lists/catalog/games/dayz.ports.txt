@@ -1,0 +1,12 @@
+# DayZ/Steam transport ports used for an opt-in, per-device game rule.
+# Syntax is protocol:destination-port-or-range. These are not port forwards.
+# Steam reference: https://help.steampowered.com/en/faqs/view/2EA8-4D75-DA21-31EB
+# DayZ query/game defaults are documented by Bohemia community support:
+# https://forums.dayz.com/topic/243927-server-not-showing-in-server-browser/
+tcp:27015-27050
+udp:2302-2306
+udp:27000-27250
+udp:27016
+udp:3478
+udp:4379
+udp:4380

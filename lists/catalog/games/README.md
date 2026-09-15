@@ -12,6 +12,7 @@ only the product set and its required shared platform set:
 | Apex Legends / Battlefield | `ea-app` + the matching product list |
 | The Sims / NFS / Mass Effect / Dragon Age / SWTOR and other EA games | `ea-app` + the matching product list |
 | Wargaming / World of Tanks (EU) | `wargaming` |
+| DayZ | `steam` + `dayz` |
 
 The presence of a list means that the product has distinct, provider-owned
 endpoints worth testing.  It does **not** assert a nationwide RKN block or
@@ -23,3 +24,9 @@ For Wargaming, this profile is deliberately for the international Wargaming
 services, account and in-game store. It is not the Russian Lesta-operated
 "Мир танков" service. Route the profile only for a verified store/login
 failure; do not turn it into a default full-device game VPN.
+
+DayZ has a separate `dayz.ports.txt` reference for an opt-in per-device rule.
+The port file documents outbound destination ports; it is not a port-forwarding
+recipe and is intentionally not enabled by the catalog itself. Use the domain
+profile for launcher/account endpoints and keep gameplay routing scoped to the
+affected device.

@@ -1,0 +1,9 @@
+# DayZ / Bohemia Interactive and BattlEye service domains.
+# Steam client and content endpoints are composed from steam.domains.txt.
+# These are exact service roots; shared CDN/provider suffixes are excluded.
+battleye.com
+battleye.net
+bohemia.net
+bohemiainteractive.com
+dayz.com
+dayzgame.com

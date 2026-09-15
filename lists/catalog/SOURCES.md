@@ -24,6 +24,8 @@ is a discovery source, not authority for routing policy:
 - EA regional availability: <https://help.ea.com/ru/articles/orders-and-rewards/unavailable-ea-games/>
 - EA provider/domain discovery set: <https://github.com/v2fly/domain-list-community/blob/master/data/ea>
 - Bungie network guide: <https://help.bungie.net/hc/en-us/articles/360049496531-Network-Troubleshooting-Guide>
+- Steam required ports: <https://help.steampowered.com/en/faqs/view/2EA8-4D75-DA21-31EB>
+- DayZ server/query port guidance: <https://forums.dayz.com/topic/243927-server-not-showing-in-server-browser/>
 - Wargaming Russia/Belarus business transition: <https://wargaming.com/en/news/business-operations-worldwide/>
 - Wargaming account-transfer FAQ: <https://worldoftanks.eu/en/content/account-transfer-faq/>
 - Wargaming store-route verification: internal Russian-router test, 2026-08-30.

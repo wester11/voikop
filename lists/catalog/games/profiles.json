@@ -39,6 +39,7 @@
     {"id":"league-of-legends","name":"League of Legends / TFT","status":"WATCHLIST","domains":"league-of-legends.domains.txt","components":["riot-platform"],"cause":["reported_network"],"evidence":"provider_domains"},
     {"id":"call-of-duty","name":"Call of Duty","status":"WATCHLIST","domains":"activision-call-of-duty.domains.txt","components":["battle-net"],"cause":["reported_network"],"evidence":"provider_domains"},
     {"id":"arma-reforger","name":"Arma Reforger","status":"INTERMITTENT","domains":"arma-reforger.domains.txt","components":[],"cause":["reported_network"],"evidence":"provider_domains"},
+    {"id":"dayz","name":"DayZ","status":"INTERMITTENT","domains":"dayz.domains.txt","components":["steam"],"cause":["reported_network","udp"],"evidence":"provider_domains"},
     {"id":"repo","name":"R.E.P.O.","status":"WATCHLIST","domains":null,"components":[],"cause":["reported_network","photon"],"evidence":"requires_capture"},
     {"id":"dont-starve-together","name":"Don't Starve Together","status":"INTERMITTENT","domains":"dont-starve-together.domains.txt","components":["steam"],"cause":["reported_network"],"evidence":"provider_domains"},
     {"id":"steel-division-2","name":"Steel Division 2","status":"INTERMITTENT","domains":"steel-division-2.domains.txt","components":["steam"],"cause":["reported_network","cdn"],"evidence":"provider_domains"},
