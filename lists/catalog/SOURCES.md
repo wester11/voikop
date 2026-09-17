@@ -29,6 +29,7 @@ is a discovery source, not authority for routing policy:
 - Netflix regional availability: <https://help.netflix.com/ru/node/14164>
 - Spotify regional availability: <https://support.spotify.com/li/article/where-spotify-is-available/>
 - Spotify provider domains and exact delivery hosts: <https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/spotify>
+- Pirate Face service root, verified from a Russian router: <https://pirateface.co/>
 - Netflix provider domains and exact delivery host: <https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/netflix>
 - Wargaming Russia/Belarus business transition: <https://wargaming.com/en/news/business-operations-worldwide/>
 - Wargaming account-transfer FAQ: <https://worldoftanks.eu/en/content/account-transfer-faq/>
