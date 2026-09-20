@@ -1,0 +1,3 @@
+# GitHub Copilot API and product host; GitHub itself stays in its own service set.
+api.githubcopilot.com
+githubcopilot.com

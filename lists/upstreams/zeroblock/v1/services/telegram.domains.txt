@@ -1,6 +1,3 @@
-# social / telegram
-# Source: pinned ZeroBlock v1 snapshot (itdoginfo/allow-domains).
-
 cdn-telegram.org
 comments.app
 contest.com

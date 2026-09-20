@@ -1,0 +1,20 @@
+# services / hdrezka
+# Source: pinned ZeroBlock v1 snapshot (itdoginfo/allow-domains).
+
+hd-rezka.tv
+hdrezka.ac
+hdrezka.ag
+hdrezka.app
+hdrezka.me
+hdrezka.tech
+hdrezka.tv
+hdrzk.org
+rezka-ua.in
+rezka.ag
+rezka.cc
+rezka.fi
+rezka.land
+rezka.my
+rezka.tv
+rezkify.com
+voidboost.cc

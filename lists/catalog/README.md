@@ -1,6 +1,6 @@
 # VOIKOP service catalog
 
-This directory is an **inactive research catalog**.  Nothing below is read by
+This directory is an **inactive canonical service catalog**. Nothing below is read by
 `install.sh`, Podkop, Forkop, ZeroBlock, or any router action.  Adding a file
 here cannot change a user's routing.
 
@@ -23,12 +23,12 @@ route.
   Telegram is currently the sole entry with an official CIDR document; shared
   CDN ranges remain excluded. A domain route can follow DNS changes; hard-coded
   CDN ranges cannot.
-- The catalog must not duplicate the currently active
-  `../podkop-full-services.txt` list. It intentionally excludes the existing
-  Podkop/Forkop community categories except for the explicitly documented
-  Telegram catalog entry: YouTube, Meta,
-  Discord, X/Twitter, TikTok, Google AI, Google Play, Roblox, Cloudflare,
-  CloudFront, DigitalOcean, Hetzner, OVH, and the regional lists.
+- `ai/` is the canonical source for the future `AI` profile and can overlap the
+  active Full list. Its files are one product per file: for example ChatGPT,
+  Claude and Gemini are separate rather than one opaque AI dump.
+- Broad Podkop/Forkop/ZeroBlock regional and CDN categories remain in
+  `../upstreams/zeroblock/`; they are not silently promoted into a product
+  profile.
 - An entry is not a claim that a service is officially blocked in Russia.  It
   is a routing candidate for a reported connectivity problem and must be
   tested with that service before it is ever enabled.
@@ -39,11 +39,14 @@ route.
 - `games/profiles.json` — routing profile registry.  It records a product's
   status, likely cause, required shared components and evidence level without
   enabling anything on a router.
-- `social/` — social networks and messengers not already routed by the current
-  profiles.
-- `ai/` — AI products not already in the active full-services list.
+- `social/` — social networks and messengers. A service can have both its
+  `*.domains.txt` and `*.cidrs.txt` beside each other. Files explicitly named
+  `*.zeroblock.cidrs.txt` are raw upstream data, never an automatic route.
+- `ai/` — one AI product per file; `../profiles/ai-all.domains.txt` is its
+  generated union.
 - `services/` — narrowly scoped productivity, media and platform endpoints.
-- `networks/` — policy for future published, service-specific network ranges.
+- `networks/` — reserved for a future network policy that is not tied to one
+  service; service networks now live beside the matching service.
 - `SOURCES.md` — provenance and review method.
 
 `../profiles/games-all.domains.txt` is a generated, future-use composition of
@@ -51,9 +54,9 @@ every catalogued game endpoint, including the exact CDN hostnames listed above.
 It deliberately is not a default route: a single game profile is usually a
 better choice for latency and troubleshooting.
 
-Run `python validate_catalog.py` before any future integration.  It rejects
-duplicates inside a list, malformed domains, and overlaps with the active
-VOIKOP full-services list.
+Run `python validate_catalog.py` before any future integration. It rejects
+duplicates and malformed domains, and checks that the AI and games profiles
+match the union of their respective service files.
 
 ## Game-profile states
 

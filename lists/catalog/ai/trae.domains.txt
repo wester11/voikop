@@ -1,0 +1,2 @@
+# Trae AI editor.
+trae.ai

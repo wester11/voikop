@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import re
 import sys
 from pathlib import Path
@@ -63,16 +64,33 @@ def main() -> int:
             if value in seen:
                 errors.append(f"{path.relative_to(ROOT)}: duplicate {value}")
             seen.add(value)
-            for current in active:
-                if value == current or value.endswith(f".{current}") or current.endswith(f".{value}"):
-                    errors.append(f"{path.relative_to(ROOT)}: overlaps active list: {value} / {current}")
-                    break
+            if path.parent.name != "ai":
+                for current in active:
+                    if value == current or value.endswith(f".{current}") or current.endswith(f".{value}"):
+                        errors.append(f"{path.relative_to(ROOT)}: overlaps active list: {value} / {current}")
+                        break
             other = owners.get(value)
             if other is not None:
                 errors.append(
                     f"{path.relative_to(ROOT)}: duplicated by {other.relative_to(ROOT)}: {value}"
                 )
             owners[value] = path
+
+    cidr_files = sorted(ROOT.glob("**/*.cidrs.txt"))
+    for path in cidr_files:
+        values = entries(path)
+        seen_cidrs: set[str] = set()
+        for value in values:
+            try:
+                normalized = str(ipaddress.ip_network(value, strict=False))
+            except ValueError:
+                errors.append(f"{path.relative_to(ROOT)}: invalid CIDR {value!r}")
+                continue
+            if normalized != value:
+                errors.append(f"{path.relative_to(ROOT)}: non-canonical CIDR {value!r}; use {normalized!r}")
+            if normalized in seen_cidrs:
+                errors.append(f"{path.relative_to(ROOT)}: duplicate CIDR {normalized}")
+            seen_cidrs.add(normalized)
 
     for path in sorted(PROFILE_ROOT.glob("*.domains.txt")):
         values = entries(path)
@@ -140,6 +158,25 @@ def main() -> int:
         if extra:
             errors.append("profiles/games-all.domains.txt: unknown " + ", ".join(extra))
 
+    ai_all = PROFILE_ROOT / "ai-all.domains.txt"
+    try:
+        ai_all_entries = entries(ai_all)
+    except OSError as exc:
+        errors.append(f"profiles/ai-all.domains.txt: unavailable: {exc}")
+        ai_all_entries = []
+    expected_ai_all: list[str] = []
+    for path in sorted((ROOT / "ai").glob("*.domains.txt")):
+        expected_ai_all.extend(entries(path))
+    if len(ai_all_entries) != len(set(ai_all_entries)):
+        errors.append("profiles/ai-all.domains.txt: duplicate domain")
+    if set(ai_all_entries) != set(expected_ai_all):
+        missing = sorted(set(expected_ai_all) - set(ai_all_entries))
+        extra = sorted(set(ai_all_entries) - set(expected_ai_all))
+        if missing:
+            errors.append("profiles/ai-all.domains.txt: missing " + ", ".join(missing))
+        if extra:
+            errors.append("profiles/ai-all.domains.txt: unknown " + ", ".join(extra))
+
     registry_path = PROFILE_ROOT / "profiles.json"
     try:
         profile_registry = json.loads(registry_path.read_text(encoding="utf-8"))
@@ -170,8 +207,8 @@ def main() -> int:
         print("\n".join(f"- {error}" for error in errors))
         return 1
     print(
-        f"Catalog valid: {len(files)} isolated service lists checked; "
-        f"games-all contains {len(games_all_entries)} exact game endpoints; no active-list overlaps."
+        f"Catalog valid: {len(files)} service domain sets and {len(cidr_files)} CIDR sets checked; "
+        f"AI has {len(ai_all_entries)} endpoints and games-all has {len(games_all_entries)}."
     )
     return 0
 

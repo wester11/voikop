@@ -1,0 +1,2 @@
+# Scira AI search.
+scira.ai

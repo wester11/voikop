@@ -79,6 +79,7 @@ LAN clients.
 | `lists/podkop-full-services.txt` | Active | Conservative service list used by the ORBIT **Full** profile. Releases pin a reviewed revision; a router refresh does not silently consume a moving branch. |
 | `lists/catalog/` | Research only | Isolated service candidates. These files are not read by the installer or a router action. |
 | `lists/profiles/` | Research only | Future opt-in compositions built from the catalog. They are not enabled automatically. |
+| `lists/upstreams/zeroblock/` | Research only | Pinned ZeroBlock v1 source snapshot and a v2 category registry. Kept separate from customer routing policy. |
 
 The catalog is deliberately **not a claim to contain every service blocked or
 degraded in Russia**. There is no stable authoritative set: reachability varies

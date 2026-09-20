@@ -1,27 +1,24 @@
 # VOIKOP profile: All AI
 #
-# A composed, future-use profile for AI web apps, accounts and APIs. It merges
-# the reviewed VOIKOP AI catalog with the narrow AI endpoints already present
-# in the active VOID full-services list.  This file is not read by ORBIT,
-# Forkop or Podkop until an explicit profile integration is made.
-#
-# Review date: 2026-09-20
+# Generated from lists/catalog/ai/*.domains.txt by compile_profiles.py.
+# This profile is future-use only and is not enabled on a router automatically.
+
 accounts.google.com
 ai.google.dev
 aida.googleapis.com
-aistudio.google.com
 aisandbox-pa.googleapis.com
+aistudio.google.com
 alkalicore-pa.clients6.google.com
 alkalimakersuite-pa.clients6.google.com
+anthropic.com
 antigravity-pa.googleapis.com
 antigravity-unleash.goog
 antigravity.google
 antigravity.googleapis.com
-anthropic.com
+api.githubcopilot.com
 bard.google.com
 canva-apps.com
 canva.com
-api.githubcopilot.com
 cerebras.ai
 character.ai
 characterai.io
@@ -46,8 +43,6 @@ cursor.sh
 cursorapi.com
 deepmind.com
 deepmind.google
-firebaseinstallations.googleapis.com
-githubcopilot.com
 deepseek.ai
 deepseek.com
 deepseekapi.com
@@ -55,12 +50,14 @@ edgeservices.bing.com
 elevenlabs.ai
 elevenlabs.com
 elevenlabs.io
+firebaseinstallations.googleapis.com
 geller-pa.googleapis.com
 gemini.google
 gemini.google.com
 gemini.gstatic.com
 generativeai.google
 generativelanguage.googleapis.com
+githubcopilot.com
 grammarly.com
 grammarly.io
 grok.com
@@ -72,12 +69,12 @@ hf.co
 hf.space
 huggingface.co
 huggingfaceusercontent.com
-krea.ai
-leonardo.ai
-lmarena.ai
 jules.google
 jules.google.com
+krea.ai
 labs.google
+leonardo.ai
+lmarena.ai
 makersuite.google.com
 midjourney.com
 midjourneycdn.com
@@ -118,13 +115,13 @@ runway.ai
 runwayml.cloud
 runwayml.com
 scira.ai
+servd-anthropic-website.b-cdn.net
 sora.com
+speechs3proto2-pa.googleapis.com
 stability.ai
 stabilitycdn.com
-sydney.bing.com
-servd-anthropic-website.b-cdn.net
-speechs3proto2-pa.googleapis.com
 stitch.withgoogle.com
+sydney.bing.com
 t3.chat
 trae.ai
 v0.app

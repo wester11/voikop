@@ -1,0 +1,3 @@
+# Canva application and its first-party application host.
+canva-apps.com
+canva.com

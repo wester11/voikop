@@ -7,8 +7,9 @@ small and specific, while a profile may combine several entries.
 There are three opt-in, future-use profiles rather than a long menu of tiny
 ones:
 
-- `ai-all.domains.txt` — AI web applications, accounts, APIs and their exact
-  delivery hostnames.
+- `ai-all.domains.txt` — generated union of one-file-per-product sets in
+  `../catalog/ai/`: ChatGPT, Claude, Gemini and the other reviewed AI
+  services, accounts, APIs and exact delivery hostnames.
 - `games-all.domains.txt` — game launchers, publishers, account services,
   games and their exact documented CDN hostnames.
 - `work-and-privacy.domains.txt` — work tools, code platforms, collaboration,

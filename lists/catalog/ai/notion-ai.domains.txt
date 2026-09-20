@@ -1,0 +1,6 @@
+# Notion product, editor and static endpoints used by Notion AI.
+notion-static.com
+notion.com
+notion.new
+notion.site
+notion.so
