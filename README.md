@@ -1,174 +1,128 @@
-<h1 align="center">VOID / ORBIT</h1>
+# VOID / ORBIT
 
-<p align="center">
-  <strong>Secure control plane for OpenWrt routers</strong><br>
-  <sub>private management · per-device identity · outbound-only connectivity</sub>
+Public bootstrap for the **ORBIT management plane** on supported OpenWrt routers.
+
+<p>
+  <img alt="OpenWrt 24.10 and 25.x" src="https://img.shields.io/badge/OpenWrt-24.10%20%7C%2025.x-00c8a0?style=flat-square&logo=openwrt&logoColor=white">
+  <img alt="Management transport WireGuard" src="https://img.shields.io/badge/management-WireGuard-88171a?style=flat-square&logo=wireguard&logoColor=white">
+  <img alt="Per-router identity" src="https://img.shields.io/badge/identity-per--router-6657d8?style=flat-square">
+  <img alt="No public management port" src="https://img.shields.io/badge/inbound_management-none-24202a?style=flat-square">
 </p>
 
-<p align="center">
-  <img alt="OpenWrt" src="https://img.shields.io/badge/OpenWrt-24.10%20%7C%2025.x-00c8a0?style=flat-square&logo=openwrt&logoColor=white">
-  <img alt="WireGuard" src="https://img.shields.io/badge/transport-WireGuard-88171a?style=flat-square&logo=wireguard&logoColor=white">
-  <img alt="Security model" src="https://img.shields.io/badge/identity-per--device-8b5cf6?style=flat-square">
-  <img alt="Access" src="https://img.shields.io/badge/management-outbound--only-111827?style=flat-square">
-</p>
+ORBIT enrolls a router into a separate management plane. It is **not** a VPN
+installer, a replacement for Podkop/Forkop/ZeroBlock, or a controller for a
+customer's home traffic.
 
-ORBIT — управляющий контур для роутеров VOID на OpenWrt. Он создаёт отдельную
-защищённую плоскость управления для каждого устройства: без публичного SSH,
-без общих ключей на парк и без доступа к пользовательскому VPN-трафику.
+## System boundary
 
-Это не «скрипт для настройки VPN» и не облачная админка роутера. Репозиторий
-содержит открытый bootstrap-компонент ORBIT: минимальный, проверяемый код,
-который подключает совместимое устройство к закрытому control plane VOID.
-
-| ORBIT отвечает за | ORBIT не подменяет |
+| ORBIT owns | ORBIT does not own |
 | --- | --- |
-| identity устройства и служебный канал | VPN-подписку владельца |
-| безопасную выдачу доступа поддержке | пользовательский пароль OpenWrt |
-| контроль состояния и управляемости | выбранный профиль Podkop / Forkop |
+| Per-router device identity | Customer VPN subscription or routing policy |
+| Outbound WireGuard management tunnel | OpenWrt root password or LuCI access |
+| Support SSH key inside the management plane | Podkop, Forkop, sing-box or ZeroBlock configuration |
+| Enrollment, liveness and revocation state | General-purpose remote access to a LAN |
 
-<p align="center">
-  <code>1 router</code>&nbsp; · &nbsp;<code>1 identity</code>&nbsp; · &nbsp;<code>0 public management ports</code>
-</p>
-
-> ORBIT делает служебный доступ управляемым, проверяемым и отзывным — без
-> вмешательства в пользовательскую VPN-схему.
+The management tunnel and customer traffic are separate paths. ORBIT pins its
+WireGuard endpoint to the physical WAN and uses dedicated policy-routing rules,
+so a local proxy profile cannot route management traffic through the customer's
+VPN by accident.
 
 ```text
-             одноразовое разрешение
-ORBIT ───────────────────────────────► OpenWrt router
-  │                                         │
-  │                               уникальная identity
-  │                                         │
-  └──── encrypted WireGuard management ◄────┘
-                  outbound only
+short-lived enrollment code
+          │
+          ▼
+OpenWrt router ── outbound WireGuard ──► ORBIT control plane
+     │                                          │
+     └── unique device identity + support key ──┘
+
+customer LAN traffic ──► selected Podkop / Forkop / ZeroBlock policy
 ```
 
-## Архитектура
+## Bootstrap contract
 
-Каждый роутер получает независимую служебную identity. Устройство само
-инициирует зашифрованное соединение с ORBIT; постоянный входящий порт управления
-в интернет не открывается. Внутри этого отдельного канала поддержка получает
-только ключевой SSH-доступ, привязанный к одному конкретному устройству.
+`install.sh` is POSIX shell for BusyBox `ash`:
 
-Управляющий канал отделён от пользовательской маршрутизации. Podkop, Forkop,
-sing-box и ZeroBlock остаются профилями роутера и применяются только тогда,
-когда это выбрано владельцем. ORBIT не превращает домашнюю сеть в «полный VPN»
-сам по себе и не использует служебный туннель для клиентского трафика.
+```sh
+sh install.sh --enroll-stdin
+```
 
-### Что делает bootstrap
+The enrollment code is read from standard input with terminal echo disabled; it
+is not accepted through argv or environment variables.
 
-1. Проверяет, что устройство совместимо: OpenWrt, базовые зависимости,
-   доступное место и связность.
-2. Обменивает короткоживущий одноразовый код на identity ровно одного роутера.
-3. Поднимает отдельный WireGuard-туннель управления поверх физического WAN.
-4. Устанавливает индивидуальный ключ поддержки и ограничивает доступ с WAN.
-5. Подтверждает работоспособность канала только после handshake и проверки
-   управляемости.
+Before changing the router, the bootstrap verifies:
 
-Если один из этапов не проходит, установка завершается без «тихого» перехода
-к небезопасному режиму.
+- execution as `root` on OpenWrt 24.10 or 25.x;
+- `uci`, a detectable board name, HTTPS connectivity and at least 24 MiB free
+  space on `/overlay`;
+- a short-lived, single-use enrollment code and control-plane response;
+- management address, WireGuard material and the per-device support SSH key.
 
-## Свойства безопасности
+It then writes management-plane material under `/etc/void-router`, creates
+`void_mgmt`, installs a health check and restricts support SSH to the individual
+router identity. Invalid enrollment, unsupported hardware or incomplete
+provisioning fails closed instead of falling back to a weaker mode.
 
-| Контроль | Как реализован |
+## Traffic and routing
+
+The bootstrap does not create a customer subscription and does not select a
+routing profile. Podkop, Forkop and ZeroBlock remain independent local router
+components controlled by the owner.
+
+ORBIT's tunnel carries only enrollment, authenticated liveness and support
+management. It is not a transparent gateway and is never a default route for
+LAN clients.
+
+## Service lists
+
+| Path | Status | Meaning |
+| --- | --- | --- |
+| `lists/podkop-full-services.txt` | Active | Conservative service list used by the ORBIT **Full** profile. Releases pin a reviewed revision; a router refresh does not silently consume a moving branch. |
+| `lists/catalog/` | Research only | Isolated service candidates. These files are not read by the installer or a router action. |
+| `lists/profiles/` | Research only | Future opt-in compositions built from the catalog. They are not enabled automatically. |
+
+The catalog is deliberately **not a claim to contain every service blocked or
+degraded in Russia**. There is no stable authoritative set: reachability varies
+by ISP, protocol, region, CDN and time. A service enters the catalog only with
+scoped domains and evidence; it becomes active only after a router test.
+Podkop/Forkop community coverage is not copied into the catalog. See
+[`lists/catalog/README.md`](lists/catalog/README.md) and
+[`lists/catalog/SOURCES.md`](lists/catalog/SOURCES.md).
+
+## Trust model
+
+- One router has one management identity; keys and enrollment state are never
+  shared across the fleet.
+- The router initiates the management connection. ORBIT opens no public WAN
+  management port.
+- This checkout contains no live enrollment code, subscription URL, private
+  WireGuard key, support private key, router inventory or control-plane secret.
+- The router owner retains the OpenWrt password, LuCI and VPN-profile choices.
+- Revocation is scoped to one device identity and does not require changing
+  other routers.
+
+## Repository layout
+
+| Path | Purpose |
 | --- | --- |
-| Нет общего доступа | У каждого роутера собственные ключи и служебные данные. Компрометация одного устройства не открывает остальные. |
-| Нет публичного управления | Соединение управления создаётся роутером наружу через WireGuard; SSH с WAN блокируется. |
-| Одноразовая активация | Код имеет короткий TTL, используется один раз и не является постоянным секретом парка. |
-| Изолированный SSH | Канал поддержки использует индивидуальный ключ устройства внутри management-туннеля. |
-| Контроль до изменений | Несовместимые модели, нехватка места или отсутствие связности не переводятся в «частично настроенное» состояние. |
-| Явная маршрутизация | Пользовательский трафик определяется активным профилем VPN, а не доступом ORBIT. |
+| `install.sh` | Auditable OpenWrt enrollment bootstrap. |
+| `lists/` | Pinned active list plus reviewed research catalog. |
+| `SECURITY.md` | Vulnerability-reporting and secret-handling policy. |
 
-Пароль владельца OpenWrt не передаётся в ORBIT и не нужен для служебного канала.
-Владелец по-прежнему управляет своим паролем, LuCI и локальной конфигурацией.
-
-## Публичный код, закрытые полномочия
-
-Код bootstrap открыт намеренно: его можно читать, проверять и воспроизводимо
-аудировать. Открытый исходник **не** даёт доступ к инфраструктуре VOID.
-
-В репозитории отсутствуют действующие:
-
-- коды активации и refresh-токены;
-- VPN-подписки и ссылки клиентов;
-- приватные WireGuard-ключи и SSH-ключи;
-- сертификаты, API-ключи, адреса закрытых сервисов и данные устройств.
-
-Рабочие полномочия выдаёт control plane только после проверки одноразовой
-активации. Публичный bootstrap без такой авторизации не создаёт управляемое
-устройство и не предоставляет доступ к уже подключённым.
-
-## Состав репозитория
-
-| Путь | Назначение |
-| --- | --- |
-| `install.sh` | Минимальный bootstrap ORBIT для совместимого OpenWrt. |
-| `lists/` | Версионируемые публичные данные, необходимые установщику. |
-| `SECURITY.md` | Канал ответственного раскрытия уязвимостей. |
-
-Операционные конфигурации, инвентарь роутеров, учётные данные и управление
-подписками не являются частью этого репозитория.
-
-## Модель доступа
-
-ORBIT предназначен для устройств, которые уже добавлены в VOID. Команда
-подключения выпускается из ORBIT или закрытой панели поддержки для конкретного
-роутера. Она привязана к версии bootstrap и не должна редактироваться,
-публиковаться или передаваться третьим лицам.
-
-<details>
-<summary><strong>Для владельца роутера</strong></summary>
-
-Вы сохраняете контроль над паролем root, LuCI и выбранным VPN-профилем. ORBIT
-добавляет только отдельный служебный канал: он нужен для диагностики,
-обновлений и поддержки, но не является заменой вашей подписки или домашней
-сети.
-
-</details>
-
-<details>
-<summary><strong>Для оператора VOID</strong></summary>
-
-У каждого устройства есть собственная identity и наблюдаемый жизненный цикл:
-выдача, enrollment, handshake, состояние и отзыв. Это позволяет отзывать один
-роутер точечно, не затрагивая остальные устройства.
-
-</details>
-
-Для владельца это даёт понятную модель: у роутера есть личная конфигурация VPN,
-а у ORBIT — отдельный наблюдаемый служебный канал. Канал существует, пока
-работают питание, WAN и интернет-провайдер; скрытого «резервного» входа нет.
-
-## Операционная модель
-
-ORBIT строится вокруг трёх коротких состояний: `issued` → `enrolled` →
-`managed`. До успешной проверки канала устройство не считается подключённым.
-Повторная выдача, отозванный роутер или несовместимая платформа не превращаются
-в бесконечную попытку установки.
-
-Служебные события можно проверять по identity конкретного устройства: выдача,
-первичный handshake, состояние канала и отзыв. При этом в открытый репозиторий
-не попадают инвентарь, runtime-состояние или клиентские данные.
+Operational configuration, customer data and control-plane credentials are not
+stored here.
 
 ## Release discipline
 
-Публичный репозиторий — это проверяемая кодовая база. Рабочая панель выпускает
-bootstrap для конкретного релиза, а не подставляет случайное содержимое из
-непроверенной ветки. Перед публикацией изменения проходят shell-синтаксическую
-проверку и проверку состава репозитория на секреты.
+A production enrollment command is issued by the ORBIT control plane for one
+router and one release; copying it between routers is unsupported. Before a
+release, changes pass shell syntax checks, list validation and secret review:
 
-Именно поэтому исходник можно спокойно читать и аудировать: безопасность
-опирается на разделение кода и полномочий, а не на попытку спрятать сам
-установщик.
+```sh
+python3 lists/catalog/validate_catalog.py
+```
 
 ## Security
 
-Не публикуйте в issue, логах, скриншотах или сообщениях:
-
-- команду активации;
-- VPN-ссылку или конфигурацию роутера;
-- пароль OpenWrt;
-- приватный ключ, токен или полный диагностический дамп.
-
-Сообщение об уязвимости или подозрении на утечку отправляйте приватно в
-поддержку VOID — детали процесса находятся в [SECURITY.md](SECURITY.md).
+Do not open a public issue with an activation code, subscription URL, router
+configuration, private key, refresh token, management IP or full diagnostic
+dump. Use the private process in [SECURITY.md](SECURITY.md).
