@@ -167,11 +167,15 @@ warcraftlogs.com
 whatfontis.com
 anthropic.com
 canva.com
+canva-apps.com
 canva.dev
 canvastatus.com
+api.githubcopilot.com
+cerebras.ai
 crunchyroll.com
 deepl.com
 figma.com
+githubcopilot.com
 linear.app
 notion-static.com
 notion-status.com
@@ -190,3 +194,7 @@ protontech.ch
 protonvpn.ch
 protonvpn.com
 protonweb.com
+scira.ai
+t3.chat
+trae.ai
+webchannel-alkalimakersuite-pa.clients6.google.com
