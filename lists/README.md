@@ -1,18 +1,17 @@
 # Shared routing data
 
-This directory contains package-neutral service data and profiles. Package
-specific outputs belong in adapters: Podkop, Forkop and ZeroBlock should not
-each maintain divergent copies of the same service lists.
+This directory contains service data, one master list, individual service
+lists and ready-made category groups. The same source lists are package-neutral;
+Podkop, Forkop and other consumers must not maintain separate copies.
 
-- `common/full-services.domains.txt` — conservative shared aggregate used by
-  the current ORBIT Full profile.
+- `all-services.domains.txt` — one deduplicated union of the previous Full
+  list and all catalogued service domains. It is broad candidate data, not an
+  automatic router configuration.
 - `catalog/<category>/<service>.*` — service-level domain and provider-published
   network source lists.
 - `profiles/` — opt-in aggregate domain profiles composed from the catalog.
-- `upstreams/zeroblock/` — pinned upstream ZeroBlock snapshots and conversion
-  tooling. These snapshots are source material, not proof that ORBIT ZeroBlock
-  currently consumes domain profiles.
 
 Lists are UTF-8. Domains and CIDR prefixes remain separate inputs. New list
-revisions are not automatically deployed to routers; ORBIT releases pin
-reviewed immutable revisions.
+revisions are not automatically deployed to routers. Start with one specific
+service list for diagnosis; use the aggregate only when you intentionally want
+the whole service set routed together.

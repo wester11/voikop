@@ -25,12 +25,10 @@ usually the best first choice for latency and troubleshooting.
 
 ## What receives the active full-services list
 
-`../common/full-services.domains.txt` is the shared, package-neutral list for
-the ORBIT **Full** profile. Podkop and Forkop can consume the same domain text
-through their respective configuration fields. Each ORBIT release pins an
-immutable revision, so a new list revision becomes available only after that
-release pin is advanced and deployed; a router refresh never silently changes
-the reviewed revision.
+`../all-services.domains.txt` is the broad, package-neutral aggregate of the
+previous ORBIT Full list plus every catalogued service domain. It is not
+automatically enabled on a router. ORBIT releases pin reviewed immutable
+revisions; updating this repository alone does not change deployed routers.
 
 ZeroBlock works differently: its **Full** profile routes the selected local
 network as a whole and does not read per-service domain lists. Adding a domain

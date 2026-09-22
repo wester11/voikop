@@ -16,9 +16,6 @@ is a discovery source, not authority for routing policy:
 - <https://github.com/v2fly/domain-list-community/tree/master/data>
 - Podkop/Forkop upstream regional coverage and the active conservative service
   additions: <https://github.com/itdoginfo/allow-domains>
-- ZeroBlock 0.8.5-r31 package feed for RouteRich (used to inspect its current
-  v1/v2 community-list contract):
-  <https://packages.routerich.ru/24.10/mediatek/filogic/routerich/Packages.gz>
 - AI category cross-check, reviewed 2026-09-20:
   <https://iplist.my-handbook.ru/?format=json>. Only provider-owned roots and
   exact service endpoints are imported; shared delivery, analytics and
@@ -58,7 +55,7 @@ is a discovery source, not authority for routing policy:
 For every future change:
 
 1. Prefer a provider-owned root or a provider-published exact endpoint.
-2. Check whether it is already in `../common/full-services.domains.txt` or
+2. Check whether it is already in `../all-services.domains.txt` or
    belongs to an existing Podkop/Forkop community category. Intentional
    overlap between an individual service list and the shared aggregate is
    allowed; duplicate roots between service catalog files are not.

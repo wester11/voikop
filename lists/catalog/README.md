@@ -26,9 +26,6 @@ route.
 - `ai/` is the canonical source for the future `AI` profile and can overlap the
   shared Full list. Its files are one product per file: for example ChatGPT,
   Claude and Gemini are separate rather than one opaque AI dump.
-- Broad Podkop/Forkop/ZeroBlock regional and CDN categories remain in
-  `../upstreams/zeroblock/`; they are not silently promoted into a product
-  profile.
 - An entry is not a claim that a service is officially blocked in Russia.  It
   is a routing candidate for a reported connectivity problem and must be
   tested with that service before it is ever enabled.
@@ -40,8 +37,7 @@ route.
   status, likely cause, required shared components and evidence level without
   enabling anything on a router.
 - `social/` — social networks and messengers. A service can have both its
-  `*.domains.txt` and `*.cidrs.txt` beside each other. Files explicitly named
-  `*.zeroblock.cidrs.txt` are raw upstream data, never an automatic route.
+  `*.domains.txt` and provider-published `*.cidrs.txt` beside each other.
 - `ai/` — one AI product per file; `../profiles/ai-all.domains.txt` is its
   generated union.
 - `services/` — narrowly scoped productivity, media and platform endpoints.

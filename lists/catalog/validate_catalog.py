@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SHARED_LIST = ROOT.parent / "common" / "full-services.domains.txt"
+ALL_SERVICES = ROOT.parent / "all-services.domains.txt"
 PROFILE_ROOT = ROOT.parent / "profiles"
 DOMAIN = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 PROFILE_STATES = frozenset(
@@ -50,12 +50,20 @@ def main() -> int:
     if not files:
         errors.append("no catalog domain lists found")
 
-    shared_values = entries(SHARED_LIST)
-    if len(shared_values) != len(set(shared_values)):
-        errors.append("common/full-services.domains.txt: duplicate domain")
-    for value in shared_values:
+    all_services_values = entries(ALL_SERVICES)
+    if len(all_services_values) != len(set(all_services_values)):
+        errors.append("all-services.domains.txt: duplicate domain")
+    for value in all_services_values:
         if not DOMAIN.fullmatch(value):
-            errors.append(f"common/full-services.domains.txt: invalid domain {value!r}")
+            errors.append(f"all-services.domains.txt: invalid domain {value!r}")
+    all_services_set = set(all_services_values)
+    for path in files:
+        missing = sorted(set(entries(path)) - all_services_set)
+        if missing:
+            errors.append(
+                f"all-services.domains.txt: missing {path.relative_to(ROOT)} entries: "
+                + ", ".join(missing)
+            )
     for path in files:
         values = entries(path)
         seen: set[str] = set()
@@ -207,7 +215,8 @@ def main() -> int:
         print("\n".join(f"- {error}" for error in errors))
         return 1
     print(
-        f"Catalog valid: {len(files)} service domain sets and {len(cidr_files)} CIDR sets checked; "
+        f"Lists valid: {len(all_services_values)} all-services domains include "
+        f"{len(files)} individual lists; {len(cidr_files)} CIDR sets checked; "
         f"AI has {len(ai_all_entries)} endpoints and games-all has {len(games_all_entries)}."
     )
     return 0

@@ -76,16 +76,15 @@ LAN clients.
 
 | Path | Status | Meaning |
 | --- | --- | --- |
-| `lists/common/full-services.domains.txt` | Active | Shared, package-neutral service list used by the ORBIT **Full** profile. Releases pin a reviewed revision; a router refresh does not silently consume a moving branch. |
-| `lists/catalog/` | Research only | Isolated service candidates. These files are not read by the installer or a router action. |
-| `lists/profiles/` | Research only | Future opt-in compositions built from the catalog. They are not enabled automatically. |
-| `lists/upstreams/zeroblock/` | Research only | Pinned ZeroBlock v1 source snapshot and a v2 category registry. Kept separate from customer routing policy. |
+| `lists/all-services.domains.txt` | Master list | Deduplicated union of the previous Full list and every catalogued service domain. Broad candidate list; not automatically deployed. |
+| `lists/catalog/` | Individual lists | One list per service/game, plus service-scoped published network ranges. |
+| `lists/profiles/` | Ready-made groups | AI and game aggregates for routing by category; not enabled automatically. |
 
 The catalog is deliberately **not a claim to contain every service blocked or
 degraded in Russia**. There is no stable authoritative set: reachability varies
 by ISP, protocol, region, CDN and time. A service enters the catalog only with
-scoped domains and evidence; it becomes active only after a router test.
-Podkop/Forkop community coverage is not copied into the catalog. See
+scoped domains and evidence. The master list is useful as a broad import; test
+the individual service list first when you need to isolate a routing issue. See
 [`lists/catalog/README.md`](lists/catalog/README.md) and
 [`lists/catalog/SOURCES.md`](lists/catalog/SOURCES.md).
 
