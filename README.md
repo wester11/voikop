@@ -76,7 +76,7 @@ LAN clients.
 
 | Path | Status | Meaning |
 | --- | --- | --- |
-| `lists/podkop-full-services.txt` | Active | Conservative service list used by the ORBIT **Full** profile. Releases pin a reviewed revision; a router refresh does not silently consume a moving branch. |
+| `lists/common/full-services.domains.txt` | Active | Shared, package-neutral service list used by the ORBIT **Full** profile. Releases pin a reviewed revision; a router refresh does not silently consume a moving branch. |
 | `lists/catalog/` | Research only | Isolated service candidates. These files are not read by the installer or a router action. |
 | `lists/profiles/` | Research only | Future opt-in compositions built from the catalog. They are not enabled automatically. |
 | `lists/upstreams/zeroblock/` | Research only | Pinned ZeroBlock v1 source snapshot and a v2 category registry. Kept separate from customer routing policy. |

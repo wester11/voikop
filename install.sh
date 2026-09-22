@@ -186,11 +186,18 @@ SERVER_KEY="$(cat /etc/void-router/wg_server_public.key)"
 MGMT_FWMARK='0x564f'
 MGMT_ENDPOINT_RULE_PRIORITY=90
 MGMT_MARK_RULE_PRIORITY=91
-ROUTE="$(ip route get "$ENDPOINT_IP" 2>/dev/null || true)"
-WAN_DEV="$(printf '%s\n' "$ROUTE" | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
-WAN_GW="$(printf '%s\n' "$ROUTE" | sed -n 's/.* via \([0-9.]*\).*/\1/p')"
-case "$WAN_DEV" in ''|void_mgmt) WAN_DEV='' ;; esac
+# Do not infer WAN from a route already redirected by a VPN engine.
+# Netifd owns the physical WAN; if it is not ready, hotplug retries later.
+WAN_STATUS="$(ubus -S call network.interface.wan status 2>/dev/null || true)"
+WAN_DEV="$(printf '%s\n' "$WAN_STATUS" | jsonfilter -e '@.l3_device' 2>/dev/null || true)"
+case "$WAN_DEV" in ''|*[!A-Za-z0-9_.:-]*|void_mgmt) WAN_DEV='' ;; esac
+WAN_ROUTE=''
 if [ -n "$WAN_DEV" ]; then
+    WAN_ROUTE="$(ip -4 route show table main default dev "$WAN_DEV" 2>/dev/null | sed -n '1p')"
+fi
+case " $WAN_ROUTE " in *" dev $WAN_DEV "*) ;; *) WAN_ROUTE='' ;; esac
+WAN_GW="$(printf '%s\n' "$WAN_ROUTE" | sed -n 's/^default via \([0-9.]*\) dev .*/\1/p')"
+if [ -n "$WAN_ROUTE" ]; then
     if [ -n "$WAN_GW" ]; then
         ip route replace "$ENDPOINT_IP/32" via "$WAN_GW" dev "$WAN_DEV" metric 5
     else
@@ -213,6 +220,16 @@ while ip rule del pref "$MGMT_ENDPOINT_RULE_PRIORITY" to "$ENDPOINT_IP/32" looku
 while ip rule del pref "$MGMT_MARK_RULE_PRIORITY" fwmark "$MGMT_FWMARK/0xffffffff" lookup main 2>/dev/null; do :; done
 ip rule add pref "$MGMT_ENDPOINT_RULE_PRIORITY" to "$ENDPOINT_IP/32" lookup main
 ip rule add pref "$MGMT_MARK_RULE_PRIORITY" fwmark "$MGMT_FWMARK/0xffffffff" lookup main
+# Forkop can rebuild its output chain while switching modes. Keep the ORBIT
+# socket mark out of its interception rules whenever that chain exists.
+if command -v nft >/dev/null 2>&1 \
+    && nft list chain inet ForkopTable mangle_output >/dev/null 2>&1; then
+    if ! nft list chain inet ForkopTable mangle_output 2>/dev/null \
+        | grep -Eq 'meta mark (0x0000564f|0x564f) return'; then
+        nft insert rule inet ForkopTable mangle_output position 0 \
+            meta mark 0x564f return >/dev/null 2>&1 || true
+    fi
+fi
 MGMT_UP
 chmod 700 /usr/libexec/void-mgmt-up
 

@@ -20,9 +20,9 @@ route.
   because a service happens to use one today. Those networks are shared and
   change often.
 - `networks/` contains only provider-published, service-scoped CIDR ranges.
-  Telegram is currently the sole entry with an official CIDR document; shared
-  CDN ranges remain excluded. A domain route can follow DNS changes; hard-coded
-  CDN ranges cannot.
+  Telegram and ChatGPT Voice have official CIDR documents; shared CDN ranges
+  remain excluded. A domain route can follow DNS changes; hard-coded CDN
+  ranges cannot.
 - `ai/` is the canonical source for the future `AI` profile and can overlap the
   active Full list. Its files are one product per file: for example ChatGPT,
   Claude and Gemini are separate rather than one opaque AI dump.
@@ -45,8 +45,8 @@ route.
 - `ai/` — one AI product per file; `../profiles/ai-all.domains.txt` is its
   generated union.
 - `services/` — narrowly scoped productivity, media and platform endpoints.
-- `networks/` — reserved for a future network policy that is not tied to one
-  service; service networks now live beside the matching service.
+- `networks/` — provider-published, service-scoped network prefixes whose
+  transport/port scope is documented in the file.
 - `SOURCES.md` — provenance and review method.
 
 `../profiles/games-all.domains.txt` is a generated, future-use composition of
@@ -54,9 +54,9 @@ every catalogued game endpoint, including the exact CDN hostnames listed above.
 It deliberately is not a default route: a single game profile is usually a
 better choice for latency and troubleshooting.
 
-Run `python validate_catalog.py` before any future integration. It rejects
-duplicates and malformed domains, and checks that the AI and games profiles
-match the union of their respective service files.
+Run `python validate_catalog.py` before any future integration. It checks
+domain syntax, duplicates within lists, overlap across catalog service lists,
+and that the AI and games profiles match the union of their service files.
 
 ## Game-profile states
 

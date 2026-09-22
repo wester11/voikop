@@ -2,6 +2,13 @@
 
 Last reviewed: 2026-09-20.
 
+Official service network sources, refreshed 2026-09-22:
+
+- OpenAI ChatGPT Voice published IP prefixes (UDP destination port 3478):
+  <https://openai.com/chatgpt-voice.json>
+- OpenAI ChatGPT domain and connectivity requirements:
+  <https://help.openai.com/en/articles/9247338>
+
 The catalog starts from provider-owned suffix domains and is cross-checked
 against the maintained `domain-list-community` service datasets.  That project
 is a discovery source, not authority for routing policy:
@@ -51,8 +58,10 @@ is a discovery source, not authority for routing policy:
 For every future change:
 
 1. Prefer a provider-owned root or a provider-published exact endpoint.
-2. Check it is not already in `../podkop-full-services.txt` and does not
-   belong to an existing Podkop/Forkop community category.
+2. Check whether it is already in `../common/full-services.domains.txt` or
+   belongs to an existing Podkop/Forkop community category. Intentional
+   overlap between an individual service list and the shared aggregate is
+   allowed; duplicate roots between service catalog files are not.
 3. Do not copy shared Akamai, AWS, CloudFront, Azure, Fastly, Cloudflare,
    shared-hosting or other provider CIDRs into a service list. Use a verified
    provider-owned domain instead, unless the service publishes a dedicated

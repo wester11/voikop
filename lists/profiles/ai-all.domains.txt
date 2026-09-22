@@ -19,7 +19,10 @@ api.githubcopilot.com
 bard.google.com
 canva-apps.com
 canva.com
+cdn.openaimerge.com
+cdn.workos.com
 cerebras.ai
+challenges.cloudflare.com
 character.ai
 characterai.io
 chat.com
@@ -37,6 +40,7 @@ cohere.com
 copilot.cloud.microsoft
 copilot.microsoft
 copilot.microsoft.com
+ct.sendgrid.net
 cursor-cdn.com
 cursor.com
 cursor.sh
@@ -51,6 +55,7 @@ elevenlabs.ai
 elevenlabs.com
 elevenlabs.io
 firebaseinstallations.googleapis.com
+forwarder.workos.com
 geller-pa.googleapis.com
 gemini.google
 gemini.google.com
@@ -67,8 +72,15 @@ groq.com
 groqcloud.com
 hf.co
 hf.space
+host.livekit.cloud
 huggingface.co
 huggingfaceusercontent.com
+humb.apple.com
+images.workoscdn.com
+intercom.io
+intercomcdn.com
+js.intercomcdn.com
+js.stripe.com
 jules.google
 jules.google.com
 krea.ai
@@ -87,6 +99,8 @@ notion.com
 notion.new
 notion.site
 notion.so
+o207216.ingest.sentry.io
+o33249.ingest.sentry.io
 oaistatic.com
 oaistatsig.com
 oaiusercontent.com
@@ -111,11 +125,13 @@ replit.com
 replit.dev
 replitusercontent.com
 robinfrontend-pa.googleapis.com
+rum.browser-intake-datadoghq.com
 runway.ai
 runwayml.cloud
 runwayml.com
 scira.ai
 servd-anthropic-website.b-cdn.net
+setup.workos.com
 sora.com
 speechs3proto2-pa.googleapis.com
 stability.ai
@@ -124,6 +140,7 @@ stitch.withgoogle.com
 sydney.bing.com
 t3.chat
 trae.ai
+turn.livekit.cloud
 v0.app
 v0.dev
 webchannel-alkalimakersuite-pa.clients6.google.com
