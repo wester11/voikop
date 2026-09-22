@@ -56,15 +56,6 @@ def main() -> int:
     for value in shared_values:
         if not DOMAIN.fullmatch(value):
             errors.append(f"common/full-services.domains.txt: invalid domain {value!r}")
-    compatibility_list = ROOT.parent / "podkop-full-services.txt"
-    try:
-        compatibility_values = entries(compatibility_list)
-    except OSError as exc:
-        errors.append(f"podkop-full-services.txt: compatibility export unavailable: {exc}")
-        compatibility_values = []
-    if compatibility_values != shared_values:
-        errors.append("podkop-full-services.txt: compatibility export differs from common source")
-
     for path in files:
         values = entries(path)
         seen: set[str] = set()

@@ -32,10 +32,6 @@ immutable revision, so a new list revision becomes available only after that
 release pin is advanced and deployed; a router refresh never silently changes
 the reviewed revision.
 
-The old `../podkop-full-services.txt` path remains as a compatibility export
-for installers pinned to existing revisions. Catalog validation requires it
-to match the shared source exactly; do not edit it independently.
-
 ZeroBlock works differently: its **Full** profile routes the selected local
 network as a whole and does not read per-service domain lists. Adding a domain
 here cannot change ZeroBlock behaviour. A domain-based ZeroBlock profile would

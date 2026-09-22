@@ -2,7 +2,7 @@
 
 This directory is an auditable import layer, not an ORBIT routing profile.
 Nothing below is consumed by an installer, a router action, or
-`podkop-full-services.txt` automatically.
+`common/full-services.domains.txt` automatically.
 
 ## Layout
 
@@ -37,5 +37,5 @@ active profile, review it against `../../catalog/SOURCES.md`:
    a specifically scoped router test.
 
 The ZeroBlock AI category was separately compared with the AI profile and the
-safe missing provider endpoints were added to `podkop-full-services.txt` in
+safe missing provider endpoints were added to `common/full-services.domains.txt` in
 commit `9a78510`.

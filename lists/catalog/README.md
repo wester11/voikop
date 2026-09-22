@@ -24,7 +24,7 @@ route.
   remain excluded. A domain route can follow DNS changes; hard-coded CDN
   ranges cannot.
 - `ai/` is the canonical source for the future `AI` profile and can overlap the
-  active Full list. Its files are one product per file: for example ChatGPT,
+  shared Full list. Its files are one product per file: for example ChatGPT,
   Claude and Gemini are separate rather than one opaque AI dump.
 - Broad Podkop/Forkop/ZeroBlock regional and CDN categories remain in
   `../upstreams/zeroblock/`; they are not silently promoted into a product

@@ -6,9 +6,6 @@ each maintain divergent copies of the same service lists.
 
 - `common/full-services.domains.txt` — conservative shared aggregate used by
   the current ORBIT Full profile.
-- `podkop-full-services.txt` — compatibility export for already-pinned ORBIT
-  installers. It must stay byte-for-byte equivalent to the common source until
-  those consumers migrate to the package-neutral path.
 - `catalog/<category>/<service>.*` — service-level domain and provider-published
   network source lists.
 - `profiles/` — opt-in aggregate domain profiles composed from the catalog.
