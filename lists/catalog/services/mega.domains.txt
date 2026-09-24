@@ -1,0 +1,4 @@
+# MEGA file-hosting service endpoints. Inactive catalog candidate.
+# These provider-owned suffixes cover the shared links, API and file transfers.
+mega.co.nz
+mega.nz

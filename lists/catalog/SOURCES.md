@@ -51,6 +51,9 @@ is a discovery source, not authority for routing policy:
 - Rockstar Games provider and exact CDN endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/rockstar>
 - Blizzard and Battle.net exact delivery endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/blizzard>
 - Ubisoft Connect exact delivery and cloud-save endpoints: <https://github.com/v2fly/domain-list-community/blob/master/data/ubisoft>
+- MEGA web-extension first-party host permissions for `*.mega.nz` and `*.mega.co.nz`, including its user-storage, API, chat and S4 connection suffixes: <https://github.com/meganz/web-extension/blob/master/manifest.json>
+- Mipony official site and download service: <https://www.mipony.net/en/download/> (publisher roots only; this is a client, not a file host).
+- Internet Download Manager official site and download service: <https://www.internetdownloadmanager.com/> (publisher root only; this is a client, not a file host).
 
 For every future change:
 

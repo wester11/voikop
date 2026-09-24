@@ -1,0 +1,3 @@
+# Internet Download Manager publisher and official download service.
+# This is separate from the hosting service a user downloads from.
+internetdownloadmanager.com

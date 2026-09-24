@@ -16,3 +16,9 @@ enabling it.
 The lists deliberately omit shared cloud/CDN ranges and Netflix DNS-test
 hosts. If a client still fails, capture the concrete hostname first and add
 only a provider-owned or provider-published exact endpoint.
+
+`mega.domains.txt` covers MEGA's share, API and transfer host suffixes. Mipony
+and IDM are download clients, so their publisher domains are catalogued
+separately; routing those clients' update sites does not route a file download
+from its hosting provider. For a MEGA link, route MEGA, not the Mipony/IDM
+publisher domains.
