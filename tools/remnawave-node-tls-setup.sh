@@ -242,24 +242,39 @@ check_prerequisites() {
     fi
 }
 
+filter_aaaa_records() {
+    awk 'NF && tolower($1) !~ /^::ffff:/ {print $1}' | sort -u
+}
+
+check_dns_record_match() {
+    local a_records=$1 aaaa_records=$2 public4=$3 public6=$4
+    if [[ -n $a_records ]]; then
+        if [[ -z $public4 ]] || [[ $(printf '%s\n' "$a_records" | grep -Fxvc "$public4") != 0 ]]; then return 1; fi
+    fi
+    if [[ -n $aaaa_records ]]; then
+        if [[ -z $public6 ]] || [[ $(printf '%s\n' "$aaaa_records" | grep -Fxvc "$public6") != 0 ]]; then return 2; fi
+    fi
+    return 0
+}
+
 check_dns() {
-    local a_records aaaa_records public4 public6
+    local a_records aaaa_records public4 public6 result
     a_records=$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u || true)
-    aaaa_records=$(getent ahostsv6 "$DOMAIN" | awk '{print $1}' | sort -u || true)
+    aaaa_records=$(getent ahostsv6 "$DOMAIN" | filter_aaaa_records || true)
     [[ -n $a_records || -n $aaaa_records ]] || { say 'DNS CHECK: FAIL'; die "Для $DOMAIN не найдены A/AAAA записи."; }
     public4=$(curl -4fsS --max-time 8 https://api.ipify.org 2>/dev/null || true)
     public6=$(curl -6fsS --max-time 8 https://api64.ipify.org 2>/dev/null || true)
     say "A records: ${a_records:-none}; detected IPv4: ${public4:-unavailable}"
     say "AAAA records: ${aaaa_records:-none}; detected IPv6: ${public6:-unavailable}"
-    if [[ -n $a_records ]]; then
-        if [[ -z $public4 ]] || [[ $(printf '%s\n' "$a_records" | grep -Fxvc "$public4") != 0 ]]; then
-            say 'DNS CHECK: FAIL'; die 'A-записи должны указывать только на IPv4 этой Node; сертификат не запрашивался.'
-        fi
-    fi
-    if [[ -n $aaaa_records ]]; then
-        if [[ -z $public6 ]] || [[ $(printf '%s\n' "$aaaa_records" | grep -Fxvc "$public6") != 0 ]]; then
-            say 'DNS CHECK: FAIL'; die 'AAAA-записи должны указывать только на IPv6 этой Node; сертификат не запрашивался.'
-        fi
+    if check_dns_record_match "$a_records" "$aaaa_records" "$public4" "$public6"; then :
+    else
+        result=$?
+        say 'DNS CHECK: FAIL'
+        case $result in
+            1) die 'A-записи должны указывать только на IPv4 этой Node; сертификат не запрашивался.' ;;
+            2) die 'AAAA-записи должны указывать только на IPv6 этой Node; сертификат не запрашивался.' ;;
+            *) die 'DNS records could not be validated.' ;;
+        esac
     fi
     say 'DNS CHECK: PASS'
 }
@@ -483,7 +498,7 @@ self_test() {
     valid_domain node.example.com/path && die 'self-test: path accepted'
     valid_email admin@example.com || die 'self-test: valid email rejected'
     valid_email invalid && die 'self-test: invalid email accepted'
-    local socket tcp_rw udp_rw nginx_owner unknown_owner
+    local socket tcp_rw udp_rw nginx_owner unknown_owner mapped_only mixed_aaaa result
     socket=''
     [[ $(classify_443_owner tcp "$socket" '' '') == free ]] || die 'self-test A: free port'
     tcp_rw='tcp LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:(("rw-core",pid=101,fd=7))'
@@ -494,6 +509,21 @@ self_test() {
     [[ $(classify_443_owner tcp "$nginx_owner" '' '201 nginx') == nginx ]] || die 'self-test D: reject Nginx'
     unknown_owner='tcp LISTEN 0 128 0.0.0.0:443 0.0.0.0:* users:(("mystery",pid=202,fd=3))'
     [[ $(classify_443_owner tcp "$unknown_owner" '' '202 mystery') == unknown ]] || die 'self-test E: reject unknown owner'
+    mapped_only=$(printf '%s\n' '::ffff:192.0.2.10' | filter_aaaa_records)
+    [[ -z $mapped_only ]] || die 'self-test DNS 1: mapped IPv4 is not a real AAAA'
+    check_dns_record_match '192.0.2.10' "$mapped_only" '192.0.2.10' '2001:db8::10' || die 'self-test DNS 1: A plus mapped AAAA must pass'
+    check_dns_record_match '192.0.2.10' '2001:db8::10' '192.0.2.10' '2001:db8::10' || die 'self-test DNS 2: matching A and AAAA'
+    if check_dns_record_match '192.0.2.10' '2001:db8::11' '192.0.2.10' '2001:db8::10'; then
+        die 'self-test DNS 3: mismatched real AAAA accepted'
+    else
+        result=$?
+        [[ $result == 2 ]] || die 'self-test DNS 3: wrong failure class'
+    fi
+    mixed_aaaa=$(printf '%s\n' '::ffff:192.0.2.10' '2001:db8::10' | filter_aaaa_records)
+    [[ $mixed_aaaa == '2001:db8::10' ]] || die 'self-test DNS 4: mapped entry was not filtered alone'
+    check_dns_record_match '192.0.2.10' "$mixed_aaaa" '192.0.2.10' '2001:db8::10' || die 'self-test DNS 4: real AAAA should validate'
+    check_dns_record_match '192.0.2.10' '' '192.0.2.10' '' || die 'self-test DNS 5: IPv4-only Node should pass'
+    if check_dns_record_match '192.0.2.11' '' '192.0.2.10' ''; then die 'self-test DNS: mismatched A accepted'; fi
     local rendered tmp
     rendered=$(render_nginx node.example.com)
     [[ $rendered == *'listen 127.0.0.1:8080;'* && $rendered == *'listen [::]:80;'* && $rendered != *'listen 443'* ]] || die 'self-test: Nginx template'
