@@ -369,8 +369,8 @@ verify_managed_nginx_config() {
 }
 
 http_acme_probe_once() {
-    local token=$1 curl_bin=${2:-curl}
-    "$curl_bin" --noproxy '*' -fsS --max-time 5 -H "Host: $DOMAIN" \
+    local token=$1
+    curl --noproxy '*' -fsS --max-time 5 -H "Host: $DOMAIN" \
         "http://127.0.0.1/.well-known/acme-challenge/$token"
 }
 
@@ -387,19 +387,12 @@ retry_http_acme_probe() {
     return 1
 }
 
-mock_acme_probe_success() { printf '%s' "$1"; }
 mock_acme_probe_retry() {
     printf 'probe:%s\n' "$2" >>"$MOCK_ACME_PROBE_LOG"
     (( ${2:-0} >= 2 )) && printf '%s' "$1"
 }
 mock_acme_probe_missing() { printf 'probe:%s\n' "$2" >>"$MOCK_ACME_PROBE_LOG"; printf 'not-the-token'; }
-mock_acme_probe_direct() { http_acme_probe_once "$1" mock_acme_curl; }
 mock_acme_pause() { printf 'pause:%s\n' "$1" >>"$MOCK_ACME_PROBE_LOG"; }
-mock_acme_curl() {
-    [[ ${HTTP_PROXY:-} == http://proxy.invalid && ${HTTPS_PROXY:-} == http://proxy.invalid && ${ALL_PROXY:-} == http://proxy.invalid ]] || return 1
-    [[ $# == 8 && $1 == --noproxy && $2 == '*' && $3 == -fsS && $4 == --max-time && $5 == 5 && $6 == -H && $7 == "Host: $DOMAIN" && $8 == "http://127.0.0.1/.well-known/acme-challenge/$MOCK_ACME_TOKEN" ]] || return 1
-    printf '%s' "$MOCK_ACME_TOKEN"
-}
 
 diagnose_http_acme_failure() {
     local token=$1 challenge=$2 url="http://127.0.0.1/.well-known/acme-challenge/$1"
@@ -642,7 +635,20 @@ self_test() {
     acme_token=self-test-token
     acme_probe_log=$(mktemp)
     MOCK_ACME_PROBE_LOG=$acme_probe_log
-    retry_http_acme_probe "$acme_token" mock_acme_probe_success mock_acme_pause || die 'self-test HTTP A: immediate challenge response must pass'
+    MOCK_ACME_TOKEN=$acme_token
+    MOCK_REQUIRE_PROXY=0
+    # The production probe resolves curl by name; this stub intercepts it in the self-test.
+    # shellcheck disable=SC2329
+    curl() {
+        printf 'curl:%s\n' "$1" >>"$MOCK_ACME_PROBE_LOG"
+        [[ $# == 8 && $1 == --noproxy && $2 == '*' && $3 == -fsS && $4 == --max-time && $5 == 5 && $6 == -H && $7 == "Host: $DOMAIN" && $8 == "http://127.0.0.1/.well-known/acme-challenge/$MOCK_ACME_TOKEN" ]] || return 1
+        if [[ $MOCK_REQUIRE_PROXY == 1 ]]; then
+            [[ ${HTTP_PROXY:-} == http://proxy.invalid && ${HTTPS_PROXY:-} == http://proxy.invalid && ${ALL_PROXY:-} == http://proxy.invalid ]] || return 1
+        fi
+        printf '%s' "$MOCK_ACME_TOKEN"
+    }
+    retry_http_acme_probe "$acme_token" '' mock_acme_pause || die 'self-test HTTP A: production probe must ignore retry number and use curl'
+    [[ $(grep -c '^curl:--noproxy$' "$acme_probe_log") == 1 ]] || die 'self-test HTTP A: curl was not called exactly once'
     : >"$acme_probe_log"
     retry_http_acme_probe "$acme_token" mock_acme_probe_retry mock_acme_pause || die 'self-test HTTP B: retry response must pass'
     [[ $(grep -c '^probe:' "$acme_probe_log") == 2 && $(grep -c '^pause:' "$acme_probe_log") == 1 ]] || die 'self-test HTTP B: expected success on second attempt'
@@ -651,12 +657,14 @@ self_test() {
         die 'self-test HTTP C: ten missing responses must fail'
     fi
     [[ $(grep -c '^probe:' "$acme_probe_log") == 10 && $(grep -c '^pause:' "$acme_probe_log") == 9 ]] || die 'self-test HTTP C: expected ten attempts and nine pauses'
-    rm -f -- "$acme_probe_log"
-    MOCK_ACME_TOKEN=$acme_token
+    : >"$acme_probe_log"
     HTTP_PROXY=http://proxy.invalid HTTPS_PROXY=http://proxy.invalid ALL_PROXY=http://proxy.invalid
+    MOCK_REQUIRE_PROXY=1
     export HTTP_PROXY HTTPS_PROXY ALL_PROXY
-    retry_http_acme_probe "$acme_token" mock_acme_probe_direct mock_acme_pause || die 'self-test HTTP D: proxy variables must not affect direct localhost check'
+    retry_http_acme_probe "$acme_token" http_acme_probe_once mock_acme_pause || die 'self-test HTTP D: proxy variables must not affect direct localhost check'
+    [[ $(grep -c '^curl:--noproxy$' "$acme_probe_log") == 1 ]] || die 'self-test HTTP D: production probe did not call curl with --noproxy'
     unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    rm -f -- "$acme_probe_log"
     acme_config=$(printf '%s\n' "# configuration file $NGINX_FILE:" 'server { listen 80; }')
     if effective_nginx_config_has_managed_block "$acme_config"; then
         die 'self-test HTTP E: missing managed Nginx server must fail'
