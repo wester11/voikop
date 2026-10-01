@@ -11,7 +11,7 @@ readonly RENEW_SCRIPT=/usr/local/sbin/remna-cert-renew
 readonly RENEW_SERVICE=/etc/systemd/system/remna-cert-renew.service
 readonly RENEW_TIMER=/etc/systemd/system/remna-cert-renew.timer
 readonly CERT_MOUNT=/opt/certbot/certs:/etc/letsencrypt:ro
-DOMAIN='' EMAIL='' MODE='' TTY_FD='' BACKUP_DIR='' NGINX_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0
+DOMAIN='' EMAIL='' MODE='' TTY_FD='' BACKUP_DIR='' NGINX_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -298,7 +298,8 @@ ensure_nginx() {
     if [[ -e $NGINX_FILE ]] && ! grep -Fq 'Managed by remnawave-node-tls-setup.sh' "$NGINX_FILE"; then
         die "$NGINX_FILE существует и не помечен как файл этого установщика; перезапись запрещена."
     fi
-    mkdir -p "$FALLBACK_DIR" "$WEBROOT/.well-known/acme-challenge"
+    mkdir -p "$FALLBACK_DIR"
+    ensure_acme_webroot_permissions
     if [[ -e $FALLBACK_DIR/index.html ]] && ! grep -Fq '<h1>Hello World</h1>' "$FALLBACK_DIR/index.html"; then
         die "$FALLBACK_DIR/index.html already contains other content; refusing to overwrite it."
     fi
@@ -327,22 +328,104 @@ HTML
     fi
     if ! systemctl is-active --quiet nginx; then systemctl enable --now nginx; fi
     nginx -t || die 'nginx -t failed.'
+    verify_managed_nginx_config
     curl -fsS --max-time 5 http://127.0.0.1:8080/ | grep -q 'Hello World' || die 'Fallback 127.0.0.1:8080 не вернул Hello World.'
     check_http_acme || die 'Nginx HTTP-01 webroot validation failed.'
 }
 
+ensure_acme_webroot_permissions() {
+    install -d -m 0755 "$CERTBOT_DIR" "$WEBROOT" "$WEBROOT/.well-known" "$WEBROOT/.well-known/acme-challenge"
+    chmod 0755 "$CERTBOT_DIR" "$WEBROOT" "$WEBROOT/.well-known" "$WEBROOT/.well-known/acme-challenge"
+}
+
+effective_nginx_config_has_managed_block() {
+    local config=$1 marker
+    for marker in \
+        "# configuration file $NGINX_FILE:" \
+        "server_name $DOMAIN;" \
+        'location ^~ /.well-known/acme-challenge/' \
+        "root $WEBROOT;" \
+        'listen 80;'; do
+        grep -Fq -- "$marker" <<<"$config" || return 1
+    done
+}
+
+verify_managed_nginx_config() {
+    local config
+    config=$(nginx -T 2>&1) || die 'Не удалось прочитать effective Nginx config через nginx -T.'
+    effective_nginx_config_has_managed_block "$config" || die "Managed Nginx server block для $DOMAIN не загружен в effective config (nginx -T)."
+}
+
+http_acme_probe_once() {
+    local token=$1 curl_bin=${2:-curl}
+    "$curl_bin" --noproxy '*' -fsS --max-time 5 -H "Host: $DOMAIN" \
+        "http://127.0.0.1/.well-known/acme-challenge/$token"
+}
+
+sleep_half_second() { sleep 0.5; }
+
+retry_http_acme_probe() {
+    local token=$1 probe_fn=${2:-http_acme_probe_once} pause_fn=${3:-sleep_half_second}
+    local response attempt
+    for ((attempt = 1; attempt <= 10; attempt++)); do
+        response=$("$probe_fn" "$token" "$attempt" 2>/dev/null || true)
+        [[ $response == "$token" ]] && return 0
+        ((attempt == 10)) || "$pause_fn" "$attempt"
+    done
+    return 1
+}
+
+mock_acme_probe_success() { printf '%s' "$1"; }
+mock_acme_probe_retry() {
+    printf 'probe:%s\n' "$2" >>"$MOCK_ACME_PROBE_LOG"
+    (( ${2:-0} >= 2 )) && printf '%s' "$1"
+}
+mock_acme_probe_missing() { printf 'probe:%s\n' "$2" >>"$MOCK_ACME_PROBE_LOG"; printf 'not-the-token'; }
+mock_acme_probe_direct() { http_acme_probe_once "$1" mock_acme_curl; }
+mock_acme_pause() { printf 'pause:%s\n' "$1" >>"$MOCK_ACME_PROBE_LOG"; }
+mock_acme_curl() {
+    [[ ${HTTP_PROXY:-} == http://proxy.invalid && ${HTTPS_PROXY:-} == http://proxy.invalid && ${ALL_PROXY:-} == http://proxy.invalid ]] || return 1
+    [[ $# == 8 && $1 == --noproxy && $2 == '*' && $3 == -fsS && $4 == --max-time && $5 == 5 && $6 == -H && $7 == "Host: $DOMAIN" && $8 == "http://127.0.0.1/.well-known/acme-challenge/$MOCK_ACME_TOKEN" ]] || return 1
+    printf '%s' "$MOCK_ACME_TOKEN"
+}
+
+diagnose_http_acme_failure() {
+    local token=$1 challenge=$2 url="http://127.0.0.1/.well-known/acme-challenge/$1"
+    say 'ACME LOCAL CHECK: FAIL' >&2
+    say "DOMAIN: $DOMAIN" >&2
+    say "CHALLENGE FILE: $challenge" >&2
+    ls -ld -- /opt /opt/certbot /opt/certbot/www /opt/certbot/www/.well-known /opt/certbot/www/.well-known/acme-challenge 2>&1 >&2 || true
+    ls -l -- "$challenge" 2>&1 >&2 || true
+    curl -v --noproxy '*' --max-time 5 -H "Host: $DOMAIN" "$url" 2>&1 >&2 || true
+    if [[ -r /var/log/nginx/error.log ]]; then
+        say 'Relevant recent Nginx error.log lines:' >&2
+        grep -Ei 'acme-challenge|permission denied|open\(.*failed|connect\(.*failed|404' /var/log/nginx/error.log | tail -n 30 >&2 || true
+    else
+        say 'Nginx error.log is not readable at /var/log/nginx/error.log.' >&2
+    fi
+}
+
 check_http_acme() {
-    local token challenge response
+    local token challenge
     token="remna-check-${RANDOM}${RANDOM}"
     challenge="$WEBROOT/.well-known/acme-challenge/$token"
+    ensure_acme_webroot_permissions
+    install -m 0644 /dev/null "$challenge"
     printf '%s' "$token" >"$challenge"
-    response=$(curl -fsS --max-time 5 --resolve "$DOMAIN:80:127.0.0.1" "http://$DOMAIN/.well-known/acme-challenge/$token" || true)
+    chmod 0644 "$challenge"
+    if retry_http_acme_probe "$token"; then
+        rm -f -- "$challenge"
+        ACME_CHECK_PASSED=1
+        return 0
+    fi
+    diagnose_http_acme_failure "$token" "$challenge"
     rm -f -- "$challenge"
-    [[ $response == "$token" ]]
+    return 1
 }
 
 ensure_certbot_compose() {
-    mkdir -p "$CERTS_DIR" "$WEBROOT"
+    mkdir -p "$CERTS_DIR"
+    ensure_acme_webroot_permissions
     local f=$CERTBOT_DIR/docker-compose.yml
     if [[ ! -f $f ]]; then
         backup_file "$f"
@@ -476,7 +559,7 @@ print_summary() {
     say 'CERTIFICATE: PASS'
     openssl x509 -in "$cert" -noout -enddate | sed 's/^/EXPIRES: /'
     say "CURRENT CERT PATH: $([[ -r $cert ]] && printf PASS || printf FAIL)"
-    say "NGINX HTTP/80: $(check_http_acme && printf PASS || printf FAIL)"
+    say "NGINX HTTP/80: $([[ $ACME_CHECK_PASSED == 1 ]] && printf PASS || printf FAIL)"
     say "NGINX FALLBACK/8080: $(curl -fsS --max-time 5 http://127.0.0.1:8080/ | grep -q 'Hello World' && printf PASS || printf FAIL)"
     say "REMNANODE CERT VOLUME: $(grep -Fq "$CERT_MOUNT" "$NODE_COMPOSE" && printf PASS || printf FAIL)"
     say "CERT INSIDE CONTAINER: $(docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem && docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem && printf PASS || printf FAIL)"
@@ -524,6 +607,31 @@ self_test() {
     check_dns_record_match '192.0.2.10' "$mixed_aaaa" '192.0.2.10' '2001:db8::10' || die 'self-test DNS 4: real AAAA should validate'
     check_dns_record_match '192.0.2.10' '' '192.0.2.10' '' || die 'self-test DNS 5: IPv4-only Node should pass'
     if check_dns_record_match '192.0.2.11' '' '192.0.2.10' ''; then die 'self-test DNS: mismatched A accepted'; fi
+    local saved_domain=$DOMAIN acme_config acme_token acme_probe_log
+    DOMAIN=node.example.com
+    acme_token=self-test-token
+    acme_probe_log=$(mktemp)
+    MOCK_ACME_PROBE_LOG=$acme_probe_log
+    retry_http_acme_probe "$acme_token" mock_acme_probe_success mock_acme_pause || die 'self-test HTTP A: immediate challenge response must pass'
+    : >"$acme_probe_log"
+    retry_http_acme_probe "$acme_token" mock_acme_probe_retry mock_acme_pause || die 'self-test HTTP B: retry response must pass'
+    [[ $(grep -c '^probe:' "$acme_probe_log") == 2 && $(grep -c '^pause:' "$acme_probe_log") == 1 ]] || die 'self-test HTTP B: expected success on second attempt'
+    : >"$acme_probe_log"
+    if retry_http_acme_probe "$acme_token" mock_acme_probe_missing mock_acme_pause; then
+        die 'self-test HTTP C: ten missing responses must fail'
+    fi
+    [[ $(grep -c '^probe:' "$acme_probe_log") == 10 && $(grep -c '^pause:' "$acme_probe_log") == 9 ]] || die 'self-test HTTP C: expected ten attempts and nine pauses'
+    rm -f -- "$acme_probe_log"
+    MOCK_ACME_TOKEN=$acme_token
+    HTTP_PROXY=http://proxy.invalid HTTPS_PROXY=http://proxy.invalid ALL_PROXY=http://proxy.invalid
+    export HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    retry_http_acme_probe "$acme_token" mock_acme_probe_direct mock_acme_pause || die 'self-test HTTP D: proxy variables must not affect direct localhost check'
+    unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    acme_config=$(printf '%s\n' "# configuration file $NGINX_FILE:" 'server { listen 80; }')
+    if effective_nginx_config_has_managed_block "$acme_config"; then
+        die 'self-test HTTP E: missing managed Nginx server must fail'
+    fi
+    DOMAIN=$saved_domain
     local rendered tmp
     rendered=$(render_nginx node.example.com)
     [[ $rendered == *'listen 127.0.0.1:8080;'* && $rendered == *'listen [::]:80;'* && $rendered != *'listen 443'* ]] || die 'self-test: Nginx template'
