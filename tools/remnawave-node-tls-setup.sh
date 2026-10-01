@@ -30,16 +30,28 @@ valid_domain() {
 }
 valid_email() { [[ $1 =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]]; }
 
+normalize_terminal_input() {
+    local value=$1 out=$2
+    value=${value//$'\e[200~'/}
+    value=${value//$'\e[201~'/}
+    while [[ $value == *$'\r' ]]; do value=${value%$'\r'}; done
+    value="${value#"${value%%[!$' \t']*}"}"
+    value="${value%"${value##*[!$' \t']}"}"
+    printf -v "$out" '%s' "$value"
+}
+
 prompt() {
     local label=$1 out=$2 answer
     printf '%s' "$label" >&"$TTY_FD"
-    IFS= read -r -u "$TTY_FD" answer || die 'Не удалось прочитать ввод из /dev/tty.'
+    IFS= read -e -r -u "$TTY_FD" answer || die 'Не удалось прочитать ввод из /dev/tty.'
+    normalize_terminal_input "$answer" answer
     printf -v "$out" '%s' "$answer"
 }
 ask_value() {
     local label=$1 out=$2 validator=$3 value
     while :; do
         prompt "$label" value
+        if [[ $out == DOMAIN ]]; then value=${value,,}; fi
         if "$validator" "$value"; then printf -v "$out" '%s' "$value"; return 0; fi
         say 'Некорректное значение. Повторите ввод.' >&"$TTY_FD"
     done
@@ -581,6 +593,24 @@ self_test() {
     valid_domain node.example.com/path && die 'self-test: path accepted'
     valid_email admin@example.com || die 'self-test: valid email rejected'
     valid_email invalid && die 'self-test: invalid email accepted'
+    local normalized_domain
+    normalized_domain=dowload.24alisa.ru
+    valid_domain "$normalized_domain" || die 'self-test input 1: plain hostname rejected'
+    normalized_domain=' dowload.24alisa.ru '
+    normalize_terminal_input "$normalized_domain" normalized_domain
+    if [[ $normalized_domain != dowload.24alisa.ru ]] || ! valid_domain "$normalized_domain"; then die 'self-test input 2: surrounding spaces were not normalized'; fi
+    normalized_domain=$'dowload.24alisa.ru\r'
+    normalize_terminal_input "$normalized_domain" normalized_domain
+    if [[ $normalized_domain != dowload.24alisa.ru ]] || ! valid_domain "$normalized_domain"; then die 'self-test input 3: trailing CR was not removed'; fi
+    normalized_domain=$'\e[200~dowload.24alisa.ru\e[201~'
+    normalize_terminal_input "$normalized_domain" normalized_domain
+    if [[ $normalized_domain != dowload.24alisa.ru ]] || ! valid_domain "$normalized_domain"; then die 'self-test input 4: bracketed-paste markers were not removed'; fi
+    normalized_domain='dow load.24alisa.ru'
+    normalize_terminal_input "$normalized_domain" normalized_domain
+    valid_domain "$normalized_domain" && die 'self-test input 5: internal whitespace was accepted'
+    normalized_domain=https://dowload.24alisa.ru
+    normalize_terminal_input "$normalized_domain" normalized_domain
+    valid_domain "$normalized_domain" && die 'self-test input 6: URL scheme was accepted'
     local socket tcp_rw udp_rw nginx_owner unknown_owner mapped_only mixed_aaaa result
     socket=''
     [[ $(classify_443_owner tcp "$socket" '' '') == free ]] || die 'self-test A: free port'
