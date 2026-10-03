@@ -342,6 +342,10 @@ hts-hub.prod.ajax.systems
 hts-hubs.prod.ajax.systems
 hub-gw.prod.ajax.systems
 hubs-logs.prod.ajax.systems
+hts.prod.ajax.systems
+in-app-message.prod.ajax.systems
+mobile-gw.prod.ajax.systems
+mobile-gw-k8s.prod.ajax.systems
 hyprsense.com
 ibytedtos.com
 ig.me

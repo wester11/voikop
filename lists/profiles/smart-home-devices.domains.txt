@@ -5,3 +5,7 @@ hts-hubs.prod.ajax.systems
 hts-hub.prod.ajax.systems
 hubs-logs.prod.ajax.systems
 hub-gw.prod.ajax.systems
+hts.prod.ajax.systems
+in-app-message.prod.ajax.systems
+mobile-gw.prod.ajax.systems
+mobile-gw-k8s.prod.ajax.systems

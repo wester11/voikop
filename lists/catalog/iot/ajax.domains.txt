@@ -1,9 +1,13 @@
 # Ajax Systems hub-to-cloud endpoints published for firewall allowlisting.
 # Source: https://support.ajax.systems/en/firewall-configuration-recommendations/
-# The void-router-60 capture did not show traffic from the Ajax hub during the
-# observation window; these are vendor-documented candidates, not observed
-# destinations from that hub.
+# The capture observed the hub (192.168.1.210) reaching a vendor-published
+# Ajax Cloud IP over TCP/2020. TLS domain observations below came from a second,
+# unidentified LAN client, so they are not attributed to the hub itself.
 hts-hubs.prod.ajax.systems
 hts-hub.prod.ajax.systems
 hubs-logs.prod.ajax.systems
 hub-gw.prod.ajax.systems
+hts.prod.ajax.systems
+in-app-message.prod.ajax.systems
+mobile-gw.prod.ajax.systems
+mobile-gw-k8s.prod.ajax.systems
