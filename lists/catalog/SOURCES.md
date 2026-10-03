@@ -1,11 +1,13 @@
 # Sources and review method
 
-Last reviewed: 2026-09-20.
+Last reviewed: 2026-10-03.
 
 Official service network sources, refreshed 2026-09-22:
 
 - OpenAI ChatGPT Voice published IP prefixes (UDP destination port 3478):
   <https://openai.com/chatgpt-voice.json>
+- Ajax Systems Ajax Cloud firewall recommendations (published domains, static IPv4 endpoints and ports):
+  <https://support.ajax.systems/en/firewall-configuration-recommendations/>
 - OpenAI ChatGPT domain and connectivity requirements:
   <https://help.openai.com/en/articles/9247338>
 

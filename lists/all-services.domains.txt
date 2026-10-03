@@ -338,6 +338,10 @@ hoyoverse.com
 huggingface.co
 huggingfaceusercontent.com
 humb.apple.com
+hts-hub.prod.ajax.systems
+hts-hubs.prod.ajax.systems
+hub-gw.prod.ajax.systems
+hubs-logs.prod.ajax.systems
 hyprsense.com
 ibytedtos.com
 ig.me

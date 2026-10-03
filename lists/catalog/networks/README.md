@@ -14,5 +14,7 @@ change, refresh them from the source before release. Otherwise, route by the
 matching suffix domains in the adjacent catalogs.
 
 Current files: Telegram publishes its service ranges; OpenAI publishes the
-endpoints used by ChatGPT Voice. The OpenAI file is specifically for outbound
-UDP destination port 3478, not all OpenAI traffic.
+endpoints used by ChatGPT Voice; Ajax publishes static Ajax Cloud IPv4
+endpoints. The OpenAI file is specifically for outbound UDP destination port
+3478, not all OpenAI traffic. Ajax addresses are stored as individual `/32`
+hosts and must not be expanded into cloud-provider networks.

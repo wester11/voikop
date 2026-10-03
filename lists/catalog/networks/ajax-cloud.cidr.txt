@@ -1,0 +1,13 @@
+# Static Ajax Cloud IPv4 endpoints published for Ajax hub connectivity.
+# Source: https://support.ajax.systems/en/firewall-configuration-recommendations/
+# Documentation updated 2026-04-02; retrieved 2026-10-03.
+# Each address is an individual /32 host route; do not broaden to cloud-provider ranges.
+34.249.240.61/32
+35.180.2.46/32
+52.57.131.150/32
+52.57.175.225/32
+63.32.200.183/32
+63.34.34.82/32
+157.230.78.73/32
+167.99.19.236/32
+178.62.38.104/32

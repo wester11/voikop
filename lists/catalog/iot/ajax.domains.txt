@@ -1,0 +1,9 @@
+# Ajax Systems hub-to-cloud endpoints published for firewall allowlisting.
+# Source: https://support.ajax.systems/en/firewall-configuration-recommendations/
+# The void-router-60 capture did not show traffic from the Ajax hub during the
+# observation window; these are vendor-documented candidates, not observed
+# destinations from that hub.
+hts-hubs.prod.ajax.systems
+hts-hub.prod.ajax.systems
+hubs-logs.prod.ajax.systems
+hub-gw.prod.ajax.systems

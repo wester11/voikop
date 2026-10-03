@@ -1,0 +1,7 @@
+# VOIKOP profile: smart-home devices
+# Provider-published service endpoints. Not applied to routers automatically.
+# Source: https://support.ajax.systems/en/firewall-configuration-recommendations/
+hts-hubs.prod.ajax.systems
+hts-hub.prod.ajax.systems
+hubs-logs.prod.ajax.systems
+hub-gw.prod.ajax.systems

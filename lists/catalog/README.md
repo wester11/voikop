@@ -20,7 +20,7 @@ route.
   because a service happens to use one today. Those networks are shared and
   change often.
 - `networks/` contains only provider-published, service-scoped CIDR ranges.
-  Telegram and ChatGPT Voice have official CIDR documents; shared CDN ranges
+  Telegram, ChatGPT Voice and Ajax have official network documents; shared CDN ranges
   remain excluded. A domain route can follow DNS changes; hard-coded CDN
   ranges cannot.
 - `ai/` is the canonical source for the future `AI` profile and can overlap the
@@ -33,6 +33,7 @@ route.
 ## Layout
 
 - `games/` — launcher, publisher, game and platform endpoint sets.
+- `iot/` — narrowly scoped smart-home and connected-device endpoints.
 - `games/profiles.json` — routing profile registry.  It records a product's
   status, likely cause, required shared components and evidence level without
   enabling anything on a router.

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "last_reviewed": "2026-09-06",
+  "last_reviewed": "2026-10-03",
   "purpose": "Future opt-in routing profiles. This registry does not change a router configuration.",
   "profiles": [
     {
@@ -22,6 +22,13 @@
       "name": "Work and privacy",
       "domains": "work-and-privacy.domains.txt",
       "scope": "Work tools, code platforms, collaboration and privacy services",
+      "default_enabled": false
+    },
+    {
+      "id": "smart-home-devices",
+      "name": "Smart-home devices",
+      "domains": "smart-home-devices.domains.txt",
+      "scope": "Provider-published smart-home cloud endpoints; currently Ajax Cloud only, with matching published IPv4 hosts documented separately",
       "default_enabled": false
     }
   ]
