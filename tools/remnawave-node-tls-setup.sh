@@ -172,6 +172,207 @@ p.write_text("".join(lines), encoding="utf-8")
 PY
 }
 
+# Patch only the certbot service's block-style volumes list. Return 0 when the
+# webroot mount already exists and 10 when a change was written. Any uncertain
+# YAML shape is rejected instead of being reserialized or guessed at.
+patch_certbot_compose() {
+    local compose_path=$1 backup_dir=$2
+    if has cygpath; then
+        compose_path=$(cygpath -w "$compose_path")
+        backup_dir=$(cygpath -w "$backup_dir")
+    fi
+    MSYS_NO_PATHCONV=1 COMPOSE_BACKUP_DIR="$backup_dir" python3 - "$compose_path" <<'PY'
+import os, pathlib, re, shlex, shutil, sys
+
+path = pathlib.Path(sys.argv[1])
+backup_dir = pathlib.Path(os.environ["COMPOSE_BACKUP_DIR"])
+raw = path.read_bytes()
+text = raw.decode("utf-8")
+lines = text.splitlines(keepends=True)
+newline = "\r\n" if "\r\n" in text else "\n"
+
+def fail(message):
+    print(message, file=sys.stderr)
+    raise SystemExit(3)
+
+def service_bounds(name):
+    services = None
+    for i, line in enumerate(lines):
+        match = re.match(r"^( *)(?:services):\s*(?:#.*)?(?:\r?\n)?$", line)
+        if match and len(match.group(1)) == 0:
+            services = i
+            break
+    if services is None:
+        fail("No safe top-level services section found; refusing edit.")
+    start = None
+    for i in range(services + 1, len(lines)):
+        match = re.match(r"^( +)([^ #][^:]*):\s*(?:#.*)?(?:\r?\n)?$", lines[i])
+        if match and len(match.group(1)) > 0 and match.group(2) == name:
+            start = i
+            break
+        stripped = lines[i].strip()
+        indent = len(lines[i]) - len(lines[i].lstrip(" "))
+        if stripped and not stripped.startswith("#") and indent == 0:
+            break
+    if start is None:
+        fail("Service certbot not found; refusing edit.")
+    service_indent = len(lines[start]) - len(lines[start].lstrip(" "))
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        stripped = lines[i].strip()
+        indent = len(lines[i]) - len(lines[i].lstrip(" "))
+        if stripped and not stripped.startswith("#") and indent <= service_indent:
+            end = i
+            break
+    return start, end, service_indent
+
+def parse_short(value):
+    try:
+        fields = shlex.split(value, comments=True, posix=True)
+    except ValueError:
+        return None
+    if len(fields) != 1:
+        return None
+    parts = fields[0].split(":")
+    if len(parts) < 2:
+        return None
+    return parts[0], parts[1], parts[2:]
+
+start, end, service_indent = service_bounds("certbot")
+field_indent = service_indent + 2
+volumes_index = None
+inline = None
+for i in range(start + 1, end):
+    match = re.match(r"^( *)(volumes):\s*(.*?)(?:\s+#.*)?(?:\r?\n)?$", lines[i])
+    if match and len(match.group(1)) == field_indent:
+        volumes_index = i
+        inline = match.group(3).strip()
+        break
+
+empty_volumes = False
+if volumes_index is not None and inline:
+    if inline != "[]" and not inline.startswith("#"):
+        # Surface a target collision even in compact syntax, then stop safely.
+        if "/var/www/certbot" in inline:
+            compact = inline.strip("[] \t\"'")
+            parsed = parse_short(compact.lstrip("- "))
+            if parsed and parsed[1] == "/var/www/certbot" and parsed[0] != "./www":
+                print("CERTBOT WEBROOT MOUNT CONFLICT", file=sys.stderr)
+                raise SystemExit(4)
+        fail("Inline volumes syntax unsupported; refusing edit.")
+    if inline == "[]":
+        empty_volumes = True
+        comment = re.search(r"\s+#.*$", lines[volumes_index].rstrip("\r\n"))
+        suffix = (" " + comment.group(0).strip()) if comment else ""
+        lines[volumes_index] = " " * field_indent + "volumes:" + suffix + newline
+
+if volumes_index is None:
+    fail("Service certbot has no block-style volumes list; refusing edit.")
+else:
+    volumes_indent = field_indent
+    at = volumes_index + 1
+    list_indent = None
+    records = []
+    while at < end:
+        line = lines[at]
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip(" "))
+        if stripped and not stripped.startswith("#") and indent <= volumes_indent:
+            break
+        item = re.match(r"^( +)-\s*(.*?)(?:\s+#.*)?(?:\r?\n)?$", line)
+        if item and len(item.group(1)) > volumes_indent:
+            if list_indent is None:
+                list_indent = len(item.group(1))
+            elif len(item.group(1)) != list_indent:
+                fail("Irregular volumes list indentation; refusing edit.")
+            value = item.group(2).strip()
+            if re.match(r"^(?:type|source|target|read_only|consistency|bind|volume|tmpfs):(?:\s|$)", value):
+                value = ""
+            record_end = at + 1
+            while record_end < end:
+                next_line = lines[record_end]
+                next_text = next_line.strip()
+                next_indent = len(next_line) - len(next_line.lstrip(" "))
+                if next_text and not next_text.startswith("#") and next_indent <= list_indent and re.match(r"^\s*-", next_line):
+                    break
+                if next_text and not next_text.startswith("#") and next_indent <= volumes_indent:
+                    break
+                record_end += 1
+            records.append((at, record_end, value))
+            at = record_end
+            continue
+        at += 1
+
+    has_certs = False
+    has_webroot = False
+    for item_start, item_end, value in records:
+        if not value:
+            # Long-form mount: recognize its source/target without rewriting it.
+            item_text = "".join(lines[item_start:item_end])
+            source_match = re.search(r"(?m)^\s+source:\s*['\"]?([^'\"#\s]+)", item_text)
+            target_match = re.search(r"(?m)^\s+target:\s*['\"]?([^'\"#\s]+)", item_text)
+            if target_match and target_match.group(1) == "/var/www/certbot":
+                if source_match and source_match.group(1) == "./www":
+                    has_webroot = True
+                else:
+                    print("CERTBOT WEBROOT MOUNT CONFLICT", file=sys.stderr)
+                    raise SystemExit(4)
+            if target_match and target_match.group(1) == "/etc/letsencrypt" and source_match and source_match.group(1) == "./certs":
+                has_certs = True
+            continue
+        parsed = parse_short(value)
+        if parsed is None:
+            if "/var/www/certbot" in value:
+                print("CERTBOT WEBROOT MOUNT CONFLICT", file=sys.stderr)
+                raise SystemExit(4)
+            continue
+        source, target, options = parsed
+        if target == "/var/www/certbot":
+            if source != "./www" or options:
+                print("CERTBOT WEBROOT MOUNT CONFLICT", file=sys.stderr)
+                raise SystemExit(4)
+            has_webroot = True
+        if target == "/etc/letsencrypt" and source == "./certs" and not options:
+            has_certs = True
+
+    if has_webroot and has_certs:
+        raise SystemExit(0)
+    if not has_certs and not empty_volumes:
+        fail("Existing Certbot Compose lacks the expected ./certs mount.")
+    if list_indent is None:
+        list_indent = volumes_indent + 2
+    entries = []
+    if not has_certs:
+        entries.append(" " * list_indent + "- './certs:/etc/letsencrypt'" + newline)
+    if not has_webroot:
+        entries.append(" " * list_indent + "- './www:/var/www/certbot'" + newline)
+    additions = entries
+    changed = bool(entries) or empty_volumes
+
+    # Insert after the last list item so all existing service fields and mounts
+    # retain their original bytes and relative order.
+    if records:
+        at = records[-1][1]
+    else:
+        at = volumes_index + 1
+        while at < end:
+            stripped = lines[at].strip()
+            indent = len(lines[at]) - len(lines[at].lstrip(" "))
+            if stripped and not stripped.startswith("#") and indent <= volumes_indent:
+                break
+            at += 1
+
+if not changed:
+    raise SystemExit(0)
+lines[at:at] = additions
+patched = "".join(lines).encode("utf-8")
+backup_dir.mkdir(parents=True, exist_ok=True)
+shutil.copy2(path, backup_dir / "opt__certbot__docker-compose.yml")
+path.write_bytes(patched)
+raise SystemExit(10)
+PY
+}
+
 menu() {
     printf '\n[1] Verify / repair\n[2] Reissue certificate\n[3] Exit\nChoice: ' >&"$TTY_FD"
     IFS= read -r -u "$TTY_FD" MODE || die 'Не удалось прочитать выбор.'
@@ -443,10 +644,20 @@ services:
       - ./www:/var/www/certbot
 YAML
     fi
-    grep -Eq '^  certbot:' "$f" || die 'Existing Certbot Compose must define the certbot service.'
-    grep -Fq './certs:/etc/letsencrypt' "$f" || die 'Existing Certbot Compose lacks the expected ./certs mount.'
-    grep -Fq './www:/var/www/certbot' "$f" || die 'Existing Certbot Compose lacks the expected ./www mount.'
-    docker compose -f "$f" config >/dev/null || die 'Certbot Compose config invalid.'
+    local patch_status=0
+    patch_certbot_compose "$f" "$BACKUP_DIR" || patch_status=$?
+    case $patch_status in
+        0) ;;
+        10)
+            if ! (cd "$CERTBOT_DIR" && docker compose config >/dev/null); then
+                restore_file "$f"
+                die 'Certbot Compose config invalid; backup restored and installer stopped.'
+            fi
+            ;;
+        4) die 'CERTBOT WEBROOT MOUNT CONFLICT' ;;
+        *) die 'Existing Certbot Compose cannot be safely migrated.' ;;
+    esac
+    (cd "$CERTBOT_DIR" && docker compose config >/dev/null) || die 'Certbot Compose config invalid.'
 }
 
 certificate_valid() {
@@ -702,6 +913,76 @@ services:
       - /other/certs:/etc/letsencrypt:ro
 YAML
     if patch_node_compose "$tmp/compose-conflict.yml" 2>/dev/null; then die 'self-test: conflicting mount accepted'; fi
+
+    cat >"$tmp/certbot-old.yml" <<'YAML'
+services:
+  certbot:
+    container_name: certbot
+    image: certbot/certbot
+    network_mode: host
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./certs:/etc/letsencrypt
+    restart: unless-stopped
+YAML
+    cp "$tmp/certbot-old.yml" "$tmp/certbot-old.expected-backup.yml"
+    if patch_certbot_compose "$tmp/certbot-old.yml" "$tmp/backup-a"; then
+        die 'self-test Certbot A: expected old Compose to be patched'
+    else
+        result=$?
+        [[ $result == 10 ]] || die 'self-test Certbot A: patch failed'
+    fi
+    [[ $(grep -Fc './www:/var/www/certbot' "$tmp/certbot-old.yml") == 1 ]] || die 'self-test Certbot A: webroot mount missing or duplicated'
+    cmp -s "$tmp/certbot-old.expected-backup.yml" "$tmp/backup-a/opt__certbot__docker-compose.yml" || die 'self-test Certbot A: original Compose backup missing or changed'
+    cat >"$tmp/certbot-old.expected.yml" <<'YAML'
+services:
+  certbot:
+    container_name: certbot
+    image: certbot/certbot
+    network_mode: host
+    environment:
+      - TZ=UTC
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - './www:/var/www/certbot'
+    restart: unless-stopped
+YAML
+    cmp -s "$tmp/certbot-old.expected.yml" "$tmp/certbot-old.yml" || die 'self-test Certbot E: unrelated service fields changed'
+
+    before=$(sha256sum "$tmp/certbot-old.yml" | awk '{print $1}')
+    patch_certbot_compose "$tmp/certbot-old.yml" "$tmp/backup-b" || die 'self-test Certbot B: existing mounts should pass unchanged'
+    after=$(sha256sum "$tmp/certbot-old.yml" | awk '{print $1}')
+    [[ $before == "$after" ]] || die 'self-test Certbot B: already migrated file changed'
+
+    cat >"$tmp/certbot-conflict.yml" <<'YAML'
+services:
+  certbot:
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - /srv/acme:/var/www/certbot
+YAML
+    if output=$(patch_certbot_compose "$tmp/certbot-conflict.yml" "$tmp/backup-c" 2>&1); then
+        die 'self-test Certbot C: conflicting mount accepted'
+    else
+        result=$?
+        [[ $result == 4 && $output == *'CERTBOT WEBROOT MOUNT CONFLICT'* ]] || die 'self-test Certbot C: conflict diagnostic missing'
+    fi
+
+    cat >"$tmp/certbot-empty.yml" <<'YAML'
+services:
+  certbot:
+    container_name: certbot
+    volumes: []
+YAML
+    if patch_certbot_compose "$tmp/certbot-empty.yml" "$tmp/backup-d"; then
+        die 'self-test Certbot D: empty volumes should be patched'
+    else
+        result=$?
+        [[ $result == 10 ]] || die 'self-test Certbot D: empty volumes patch failed'
+    fi
+    [[ $(grep -Fc './certs:/etc/letsencrypt' "$tmp/certbot-empty.yml") == 1 && $(grep -Fc './www:/var/www/certbot' "$tmp/certbot-empty.yml") == 1 ]] || die 'self-test Certbot D: both required mounts must exist once'
+
     render_renew_script node.example.com >"$tmp/remna-cert-renew"
     bash -n "$tmp/remna-cert-renew" || die 'self-test: generated renewal script syntax'
     grep -Fq 'DOMAIN=node.example.com' "$tmp/remna-cert-renew" || die 'self-test: renewal domain'
