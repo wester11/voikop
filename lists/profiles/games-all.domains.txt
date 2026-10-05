@@ -339,3 +339,6 @@ bohemia.net
 bohemiainteractive.com
 dayz.com
 dayzgame.com
+lime-frankfurt-p4-pub.plaync.com
+qos-api.g.nc.com
+sdk.gpa.ncsoft.com

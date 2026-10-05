@@ -1,0 +1,6 @@
+# One live AION 2 session showed a high-volume outbound TCP game flow on 13328.
+# Observed destination was 193.202.112.108:13328; IP is intentionally omitted
+# because it may be dynamic and was not verified as a stable game-server range.
+# This is a session observation, not an official or complete port specification.
+# Outbound destination ports only; not a port-forwarding recipe.
+tcp:13328

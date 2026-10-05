@@ -13,12 +13,20 @@ only the product set and its required shared platform set:
 | The Sims / NFS / Mass Effect / Dragon Age / SWTOR and other EA games | `ea-app` + the matching product list |
 | Wargaming / World of Tanks (EU) | `wargaming` |
 | DayZ | `steam` + `dayz` |
+| AION 2 | `steam` + `aion-2` (observed endpoints only; not complete) |
 
 The presence of a list means that the product has distinct, provider-owned
 endpoints worth testing.  It does **not** assert a nationwide RKN block or
 mean that all game traffic should be forced through VPN.  Server status,
 publisher regional policy, anti-cheat, P2P/UDP and local packet loss must be
 checked separately.
+
+For AION 2, the domain file contains three NCSoft hostnames seen in one live
+session. The same capture showed a high-volume TCP destination port 13328 to a
+session-specific IP; see `aion-2.ports.txt`. Neither the hostnames nor that
+port have been confirmed as a complete, stable first-party endpoint set. Keep
+the profile `WATCHLIST` until DNS, process attribution, and UDP endpoints are
+captured in a clean AION-only test.
 
 For Wargaming, this profile is deliberately for the international Wargaming
 services, account and in-game store. It is not the Russian Lesta-operated

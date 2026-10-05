@@ -56,6 +56,9 @@ is a discovery source, not authority for routing policy:
 - MEGA web-extension first-party host permissions for `*.mega.nz` and `*.mega.co.nz`, including its user-storage, API, chat and S4 connection suffixes: <https://github.com/meganz/web-extension/blob/master/manifest.json>
 - Mipony official site and download service: <https://www.mipony.net/en/download/> (publisher roots only; this is a client, not a file host).
 - Internet Download Manager official site and download service: <https://www.internetdownloadmanager.com/> (publisher root only; this is a client, not a file host).
+- AION 2: three NCSoft hostnames and TCP destination port 13328 were observed
+  in a single live router session on 2026-10-05. This is internal capture
+  evidence only; it is not an official endpoint list and is not known complete.
 
 For every future change:
 

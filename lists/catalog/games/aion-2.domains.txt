@@ -1,0 +1,6 @@
+# AION 2 / NCSoft endpoints observed during one live launch and play session.
+# These are candidate routing suffixes, not a complete official endpoint list.
+# Re-capture DNS/process attribution before treating them as exhaustive.
+lime-frankfurt-p4-pub.plaync.com
+qos-api.g.nc.com
+sdk.gpa.ncsoft.com
