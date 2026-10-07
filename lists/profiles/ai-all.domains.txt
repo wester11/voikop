@@ -87,6 +87,7 @@ krea.ai
 labs.google
 leonardo.ai
 lmarena.ai
+magnific.com
 makersuite.google.com
 midjourney.com
 midjourneycdn.com

@@ -1,0 +1,2 @@
+# Magnific AI web application.
+magnific.com

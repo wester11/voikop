@@ -22,6 +22,9 @@ is a discovery source, not authority for routing policy:
   <https://iplist.my-handbook.ru/?format=json>. Only provider-owned roots and
   exact service endpoints are imported; shared delivery, analytics and
   third-party domains are deliberately excluded.
+- Magnific AI web application root, supplied for routing by the operator:
+  <https://magnific.com/>. Only the provider-owned root is included; shared
+  CDN and analytics hosts are excluded.
 - Telegram service domains: <https://github.com/itdoginfo/allow-domains/blob/main/Services/telegram.lst>
 - Telegram service CIDRs: <https://core.telegram.org/resources/cidr.txt>
 - Microsoft Store endpoint requirements: <https://learn.microsoft.com/en-us/intune/fundamentals/endpoints>
