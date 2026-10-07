@@ -11,6 +11,8 @@ antigravity-pa.googleapis.com
 antigravity-unleash.goog
 antigravity.google
 antigravity.googleapis.com
+assistant-s3-pa.googleapis.com
+assistantfrontend-pa.googleapis.com
 bard.google.com
 cloudcode-pa.googleapis.com
 deepmind.com
@@ -30,6 +32,8 @@ notebooklm.google
 notebooklm.google.com
 proactivebackend-pa.googleapis.com
 robinfrontend-pa.googleapis.com
+searchnotifications-pa.googleapis.com
 speechs3proto2-pa.googleapis.com
 stitch.withgoogle.com
+taskassist-pa.googleapis.com
 webchannel-alkalimakersuite-pa.clients6.google.com

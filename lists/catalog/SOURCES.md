@@ -22,6 +22,13 @@ is a discovery source, not authority for routing policy:
   <https://iplist.my-handbook.ru/?format=json>. Only provider-owned roots and
   exact service endpoints are imported; shared delivery, analytics and
   third-party domains are deliberately excluded.
+- Gemini app endpoint candidates `assistantfrontend-pa.googleapis.com`,
+  `assistant-s3-pa.googleapis.com`, `searchnotifications-pa.googleapis.com`,
+  and `taskassist-pa.googleapis.com` were reported in the allow-domains issue
+  tracker and cross-checked against the MetaCubeX Google Gemini geosite:
+  <https://github.com/itdoginfo/allow-domains/issues/129>,
+  <https://github.com/MetaCubeX/meta-rules-dat/blob/sing/geo/geosite/google-gemini.json>.
+  They are narrow exact hosts, not a claim of a complete official Google list.
 - Magnific AI web application root, supplied for routing by the operator:
   <https://magnific.com/>. Only the provider-owned root is included; shared
   CDN and analytics hosts are excluded.

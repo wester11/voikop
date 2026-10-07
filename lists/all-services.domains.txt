@@ -42,6 +42,8 @@ antigravity-pa.googleapis.com
 antigravity-unleash.goog
 antigravity.google
 antigravity.googleapis.com
+assistant-s3-pa.googleapis.com
+assistantfrontend-pa.googleapis.com
 apexlegends.com
 api.githubcopilot.com
 api.smartthings.com
@@ -661,6 +663,7 @@ snapkit.co
 sonyentertainmentnetwork.com
 sora.com
 source.unsplash.com
+searchnotifications-pa.googleapis.com
 speechs3proto2-pa.googleapis.com
 spoti.fi
 spotify-everywhere.com
@@ -719,6 +722,7 @@ stitch.withgoogle.com
 stock.adobe.com
 storecatalogrevocation.storequality.microsoft.com
 storeedgefd.dsx.mp.microsoft.com
+taskassist-pa.googleapis.com
 supercell.com
 supercell.helpshift.com
 supercell.net

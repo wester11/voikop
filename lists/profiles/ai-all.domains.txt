@@ -16,6 +16,8 @@ antigravity-unleash.goog
 antigravity.google
 antigravity.googleapis.com
 api.githubcopilot.com
+assistant-s3-pa.googleapis.com
+assistantfrontend-pa.googleapis.com
 bard.google.com
 canva-apps.com
 canva.com
@@ -131,6 +133,7 @@ runway.ai
 runwayml.cloud
 runwayml.com
 scira.ai
+searchnotifications-pa.googleapis.com
 servd-anthropic-website.b-cdn.net
 setup.workos.com
 sora.com
@@ -140,6 +143,7 @@ stabilitycdn.com
 stitch.withgoogle.com
 sydney.bing.com
 t3.chat
+taskassist-pa.googleapis.com
 trae.ai
 turn.livekit.cloud
 v0.app
