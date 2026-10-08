@@ -6,12 +6,13 @@ IFS=$'\n\t'
 readonly NODE_DIR=/opt/remnanode NODE_COMPOSE=/opt/remnanode/docker-compose.yml
 readonly CERTBOT_DIR=/opt/certbot CERTS_DIR=/opt/certbot/certs WEBROOT=/opt/certbot/www
 readonly NGINX_FILE=/etc/nginx/conf.d/remna-node-tls-setup.conf
-readonly FALLBACK_DIR=/var/www/remna-node-site
 readonly RENEW_SCRIPT=/usr/local/sbin/remna-cert-renew
 readonly RENEW_SERVICE=/etc/systemd/system/remna-cert-renew.service
 readonly RENEW_TIMER=/etc/systemd/system/remna-cert-renew.timer
+readonly STATE_FILE=/etc/remna-node-bootstrap.conf
 readonly CERT_MOUNT=/opt/certbot/certs:/etc/letsencrypt:ro
-DOMAIN='' EMAIL='' MODE='' TTY_FD='' BACKUP_DIR='' NGINX_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
+DOMAIN='' EMAIL='' MODE='' TTY_FD='' BACKUP_DIR='' NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
+WEB_ROOT=/var/www/remna-node-site
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -99,12 +100,13 @@ on_exit() {
 }
 
 render_nginx() {
+    local with_tls=${2:-0}
     cat <<EOF
 # Managed by remnawave-node-tls-setup.sh
 server {
     listen 127.0.0.1:8080;
     server_name _;
-    root $FALLBACK_DIR;
+    root $WEB_ROOT;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
 }
@@ -120,6 +122,19 @@ server {
     location / { return 404; }
 }
 EOF
+    if ((with_tls)); then cat <<EOF
+server {
+    listen 127.0.0.1:9443 ssl;
+    server_name $1;
+    ssl_certificate $CERTS_DIR/live/current/fullchain.pem;
+    ssl_certificate_key $CERTS_DIR/live/current/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    root $WEB_ROOT;
+    index index.html;
+    location / { try_files \$uri \$uri/ /index.html; }
+}
+EOF
+    fi
 }
 
 # Conservative text edit: handles normal block-style Compose without reserializing the file.
@@ -374,13 +389,135 @@ PY
 }
 
 menu() {
-    printf '\n[1] Verify / repair\n[2] Reissue certificate\n[3] Exit\nChoice: ' >&"$TTY_FD"
+    printf '\n[1] Verify / repair\n[2] Reissue certificate\n[3] Show TLS / Selfsteal readiness\n[4] Show Remnawave profile templates\n[5] Exit\nChoice: ' >&"$TTY_FD"
     IFS= read -r -u "$TTY_FD" MODE || die 'Не удалось прочитать выбор.'
-    [[ $MODE == 1 || $MODE == 2 || $MODE == 3 ]] || die 'Выберите 1, 2 или 3.'
+    [[ $MODE == 1 || $MODE == 2 || $MODE == 3 || $MODE == 4 || $MODE == 5 ]] || die 'Выберите значение от 1 до 5.'
 }
 
 port_is_listening() { ss -H -lnt "sport = :$1" 2>/dev/null | grep -q .; }
 port_owner() { ss -lntp "sport = :$1" 2>/dev/null || true; }
+
+load_state() {
+    local key value
+    [[ -f $STATE_FILE ]] || return 1
+    while IFS='=' read -r key value; do
+        case $key in
+            DOMAIN) valid_domain "$value" && DOMAIN=${value,,} || return 1 ;;
+            WEB_ROOT)
+                [[ $value == /* && $value != *$'\n'* && $value != *'..'* && $value =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
+                WEB_ROOT=$value
+                ;;
+        esac
+    done <"$STATE_FILE"
+    [[ -n $DOMAIN && -n $WEB_ROOT ]]
+}
+
+save_state() {
+    local tmp
+    valid_domain "$DOMAIN" || die 'Не удалось сохранить некорректный DOMAIN.'
+    [[ $WEB_ROOT == /* && $WEB_ROOT != *'..'* && $WEB_ROOT =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'WEB_ROOT должен быть безопасным абсолютным путём.'
+    tmp=$(mktemp "${STATE_FILE}.XXXXXX")
+    printf 'DOMAIN=%s\nWEB_ROOT=%s\n' "$DOMAIN" "$WEB_ROOT" >"$tmp"
+    chmod 0600 "$tmp"
+    mv -f -- "$tmp" "$STATE_FILE"
+}
+
+certificate_has_domain_san() {
+    local cert=${1:-$CERTS_DIR/live/current/fullchain.pem} san
+    [[ -r $cert ]] || return 1
+    san=$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null) || return 1
+    printf '%s\n' "$san" | tr ',' '\n' | sed 's/^[[:space:]]*//' | grep -Fxq "DNS:$DOMAIN"
+}
+
+http_backend_ready() {
+    curl --noproxy '*' -fsS --max-time 5 http://127.0.0.1:8080/ >/dev/null
+}
+
+https_backend_ready() {
+    local cert=${1:-$CERTS_DIR/live/current/fullchain.pem}
+    [[ -r $cert ]] && certificate_has_domain_san "$cert" &&
+        curl --noproxy '*' -fsS --max-time 5 --resolve "$DOMAIN:9443:127.0.0.1" --cacert "$cert" "https://$DOMAIN:9443/" >/dev/null
+}
+
+container_certificate_ready() {
+    docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem &&
+        docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem
+}
+
+managed_nginx_9443_listener() {
+    local owner=$1 config=$2
+    [[ $owner == *127.0.0.1:9443* && $owner == *nginx* && $config == *'listen 127.0.0.1:9443 ssl;'* ]]
+}
+
+detect_active_mode() {
+    local security has_tls=0 has_reality=0
+    docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || { printf 'UNKNOWN\n'; return 0; }
+    # Only extract the non-secret inbound security field. Never print config files,
+    # keys, UUIDs, tokens, or the container's full command line.
+    security=$(docker exec remnanode sh -c 'find /etc /usr/local/etc /opt/remnanode -type f -name "*.json" -exec cat {} \; 2>/dev/null' 2>/dev/null | python3 -c 'import json,sys; s=sys.stdin.read(); d=json.JSONDecoder(); out=[]
+def walk(v):
+    if isinstance(v,dict):
+        for inbound in v.get("inbounds",[]):
+            if isinstance(inbound,dict):
+                mode=inbound.get("streamSettings",{}).get("security") if isinstance(inbound.get("streamSettings",{}),dict) else None
+                if isinstance(mode,str): out.append(mode)
+        for child in v.values(): walk(child)
+    elif isinstance(v,list):
+        for child in v: walk(child)
+i=0
+while i<len(s):
+    while i<len(s) and s[i].isspace(): i+=1
+    if i>=len(s): break
+    try: value,end=d.raw_decode(s,i)
+    except json.JSONDecodeError: break
+    walk(value); i=end
+print("\\n".join(out))' 2>/dev/null || true)
+    grep -Fxq reality <<<"$security" && has_reality=1 || true
+    grep -Fxq tls <<<"$security" && has_tls=1 || true
+    if ((has_reality && !has_tls)); then printf 'REALITY SELFSTEAL\n'
+    elif ((has_tls && !has_reality)); then printf 'TLS\n'
+    else printf 'UNKNOWN\n'; fi
+}
+
+show_profile_templates() {
+    say 'TLS template (Remnawave Config Profile):'
+    cat <<'EOF'
+Inbound: VLESS / RAW (TCP)
+Security: TLS
+Certificate path: /etc/letsencrypt/live/current/fullchain.pem
+Private key path: /etc/letsencrypt/live/current/privkey.pem
+Fallback: 127.0.0.1:8080
+EOF
+    say ''
+    say 'REALITY SELFSTEAL template (Remnawave Config Profile):'
+    cat <<'EOF'
+Inbound: VLESS / RAW (TCP)
+Security: REALITY
+Target: 127.0.0.1:9443
+xver: 0
+privateKey: <EXISTING_SHARED_REALITY_PRIVATE_KEY>
+shortIds: <EXISTING_SHARED_REALITY_SHORT_IDS>
+serverNames: <ADD_THIS_NODE_DOMAIN>
+EOF
+    say ''
+    say "IMPORTANT: REALITY serverNames does not support wildcard. Add this Node domain to the shared profile serverNames list: ${DOMAIN:-<DOMAIN>}"
+    say 'Shared profile across Nodes: use one shared REALITY private key; include every Node domain in serverNames; set each Host Address/SNI to that Node domain; keep target 127.0.0.1:9443.'
+    say 'SECURITY WARNING: a shared privateKey is a shared compromise boundary. If one Node is compromised, rotate the REALITY key for the entire group.'
+}
+
+show_readiness() {
+    local cert=$CERTS_DIR/live/current/fullchain.pem tls_ready=NO selfsteal_ready=NO hy2_ready=NO cert_valid=NO
+    say "DOMAIN: ${DOMAIN:-UNKNOWN}"
+    if [[ -n $DOMAIN ]] && certificate_valid && certificate_has_domain_san "$cert"; then cert_valid=YES; fi
+    if [[ $cert_valid == YES ]] && container_certificate_ready && http_backend_ready; then tls_ready=YES; fi
+    if [[ $cert_valid == YES ]] && https_backend_ready; then selfsteal_ready=YES; fi
+    if [[ $cert_valid == YES ]] && container_certificate_ready; then hy2_ready=YES; fi
+    say "TLS MODE READY: $tls_ready"
+    say "SELFSTEAL MODE READY: $selfsteal_ready"
+    say "HY2 READY: $hy2_ready"
+    say "ACTIVE MODE: $(detect_active_mode)"
+    if [[ -r $cert ]]; then openssl x509 -in "$cert" -noout -enddate | sed 's/^/CERTIFICATE EXPIRES: /'; fi
+}
 
 # Return free, remnawave, nginx, or unknown. Xray ownership is confirmed by
 # matching the socket PID to docker top remnanode and its comm name.
@@ -453,6 +590,14 @@ check_prerequisites() {
         say 'TCP/8080 уже обслуживается другой конфигурацией Nginx:'; port_owner 8080
         die 'Отказ от дублирования Nginx fallback listener.'
     fi
+    if port_is_listening 9443; then
+        local owner config
+        owner=$(port_owner 9443); config=$(cat "$NGINX_FILE" 2>/dev/null || true)
+        if ! managed_nginx_9443_listener "$owner" "$config"; then
+            say 'TCP/9443 занят неизвестным процессом:'; printf '%s\n' "$owner"
+            die 'Отказ от перезаписи неизвестного listener на TCP/9443.'
+        fi
+    fi
 }
 
 filter_aaaa_records() {
@@ -511,12 +656,12 @@ ensure_nginx() {
     if [[ -e $NGINX_FILE ]] && ! grep -Fq 'Managed by remnawave-node-tls-setup.sh' "$NGINX_FILE"; then
         die "$NGINX_FILE существует и не помечен как файл этого установщика; перезапись запрещена."
     fi
-    mkdir -p "$FALLBACK_DIR"
+    mkdir -p "$WEB_ROOT"
     ensure_acme_webroot_permissions
-    if [[ -e $FALLBACK_DIR/index.html ]] && ! grep -Fq '<h1>Hello World</h1>' "$FALLBACK_DIR/index.html"; then
-        die "$FALLBACK_DIR/index.html already contains other content; refusing to overwrite it."
+    if [[ -e $WEB_ROOT/index.html ]] && ! grep -Fq '<h1>Hello World</h1>' "$WEB_ROOT/index.html"; then
+        say "Using existing website in $WEB_ROOT."
     fi
-    if [[ ! -e $FALLBACK_DIR/index.html ]]; then cat >"$FALLBACK_DIR/index.html" <<'HTML'
+    if [[ ! -e $WEB_ROOT/index.html ]]; then cat >"$WEB_ROOT/index.html" <<'HTML'
 <!doctype html>
 <html lang="en">
 <head>
@@ -531,18 +676,21 @@ ensure_nginx() {
 HTML
     fi
     local rendered
-    rendered=$(render_nginx "$DOMAIN")
+    if [[ -r $CERTS_DIR/live/current/fullchain.pem && -r $CERTS_DIR/live/current/privkey.pem ]]; then rendered=$(render_nginx "$DOMAIN" 1)
+    else rendered=$(render_nginx "$DOMAIN")
+    fi
     if [[ ! -f $NGINX_FILE || $(cat "$NGINX_FILE") != "$rendered" ]]; then
         backup_file "$NGINX_FILE"
         printf '%s\n' "$rendered" >"$NGINX_FILE"
         NGINX_CHANGED=1
         nginx -t || die 'nginx -t failed; изменение будет отменено.'
         if ((NGINX_WAS_ACTIVE)); then systemctl reload nginx; else systemctl enable --now nginx; fi
+        NGINX_RELOADED=1
     fi
     if ! systemctl is-active --quiet nginx; then systemctl enable --now nginx; fi
     nginx -t || die 'nginx -t failed.'
     verify_managed_nginx_config
-    curl -fsS --max-time 5 http://127.0.0.1:8080/ | grep -q 'Hello World' || die 'Fallback 127.0.0.1:8080 не вернул Hello World.'
+    http_backend_ready || die 'Fallback 127.0.0.1:8080 is not serving the configured website.'
     check_http_acme || die 'Nginx HTTP-01 webroot validation failed.'
 }
 
@@ -561,6 +709,11 @@ effective_nginx_config_has_managed_block() {
         'listen 80;'; do
         grep -Fq -- "$marker" <<<"$config" || return 1
     done
+    if [[ -r $CERTS_DIR/live/current/fullchain.pem ]]; then
+        for marker in 'listen 127.0.0.1:9443 ssl;' "$CERTS_DIR/live/current/fullchain.pem" "$CERTS_DIR/live/current/privkey.pem"; do
+            grep -Fq -- "$marker" <<<"$config" || return 1
+        done
+    fi
 }
 
 verify_managed_nginx_config() {
@@ -669,11 +822,32 @@ certificate_valid() {
     local pubc pubk
     pubc=$(openssl x509 -in "$cert" -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | sha256sum | awk '{print $1}') || return 1
     pubk=$(openssl pkey -in "$key" -pubout -outform DER 2>/dev/null | sha256sum | awk '{print $1}') || return 1
-    [[ $pubc == "$pubk" ]]
+    [[ $pubc == "$pubk" ]] && certificate_has_domain_san "$cert"
+}
+
+remnawave_core_ready() {
+    docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || return 1
+    docker top remnanode -eo comm 2>/dev/null | grep -Eiq '^(rw-core|xray)$'
+}
+
+renewal_after_change() {
+    local before=$1 after=$2
+    [[ $before != "$after" ]] || return 0
+    certificate_valid || { warn 'Renewal produced an invalid certificate, SAN, expiry, or key pair.'; return 1; }
+    nginx -t || { warn 'nginx -t failed after certificate renewal.'; return 1; }
+    systemctl reload nginx || { warn 'Nginx reload failed after certificate renewal.'; return 1; }
+    https_backend_ready || { warn 'HTTPS backend 127.0.0.1:9443 failed after certificate renewal.'; return 1; }
+    docker compose -f "$NODE_COMPOSE" restart remnanode || { warn 'Remnanode restart failed after certificate renewal.'; return 1; }
+    sleep 15
+    if ! container_certificate_ready || ! remnawave_core_ready; then
+        warn 'Remnanode certificate mount or rw-core check failed after restart.'
+        return 1
+    fi
 }
 
 issue_certificate() {
-    local cert=$CERTS_DIR/live/$DOMAIN/fullchain.pem key=$CERTS_DIR/live/$DOMAIN/privkey.pem
+    local cert=$CERTS_DIR/live/$DOMAIN/fullchain.pem key=$CERTS_DIR/live/$DOMAIN/privkey.pem before=''
+    [[ -r $cert ]] && before=$(sha256sum "$cert" | awk '{print $1}')
     if [[ -e $cert || -e $key ]]; then
         if ((MODE == 1)) && certificate_valid; then
             say 'Существующий сертификат валиден; сохраняю его.'
@@ -696,6 +870,9 @@ issue_certificate() {
         ln -s "$DOMAIN" "$current"
     fi
     [[ -r $current/fullchain.pem && -r $current/privkey.pem ]] || die 'current certificate link unreadable.'
+    local after
+    after=$(sha256sum "$current/fullchain.pem" | awk '{print $1}')
+    [[ $before == "$after" ]] || CERTIFICATE_CHANGED=1
 }
 
 ensure_node_volume() {
@@ -724,8 +901,23 @@ ensure_node_volume() {
 }
 
 render_renew_script() {
-    # shellcheck disable=SC2016
-    printf '#!/usr/bin/env bash\n# Managed by remnawave-node-tls-setup.sh\nset -Eeuo pipefail\nCERT=/opt/certbot/certs/live/current/fullchain.pem\nKEY=/opt/certbot/certs/live/current/privkey.pem\nDOMAIN=%s\nbefore=$(sha256sum "$CERT" | awk '\''{print $1}'\'')\n(cd /opt/certbot && docker compose run --rm certbot renew --quiet)\nafter=$(sha256sum "$CERT" | awk '\''{print $1}'\'')\n[[ $before != "$after" ]] || exit 0\nopenssl x509 -in "$CERT" -noout -checkhost "$DOMAIN" -checkend 0\nopenssl x509 -in "$CERT" -noout -dates\ncert_pub=$(openssl x509 -in "$CERT" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | awk '\''{print $1}'\'')\nkey_pub=$(openssl pkey -in "$KEY" -pubout -outform DER | sha256sum | awk '\''{print $1}'\'')\n[[ $cert_pub == "$key_pub" ]]\n(cd /opt/remnanode && docker compose restart remnanode)\nsleep 15\ndocker inspect -f '\''{{.State.Running}}'\'' remnanode | grep -qx true\ndocker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem\ndocker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem\ndocker logs --since 30s remnanode\n' "$1"
+    local domain=$1
+    cat <<'RENEW'
+#!/usr/bin/env bash
+# Managed by remnawave-node-tls-setup.sh
+set -Eeuo pipefail
+CERTS_DIR=/opt/certbot/certs
+NODE_DIR=/opt/remnanode
+NODE_COMPOSE=/opt/remnanode/docker-compose.yml
+RENEW
+    printf 'DOMAIN=%q\n' "$domain"
+    declare -f warn certificate_has_domain_san certificate_valid https_backend_ready container_certificate_ready remnawave_core_ready renewal_after_change
+    cat <<'RENEW'
+before=$(sha256sum "$CERTS_DIR/live/current/fullchain.pem" | awk '{print $1}')
+(cd /opt/certbot && docker compose run --rm certbot renew --quiet)
+after=$(sha256sum "$CERTS_DIR/live/current/fullchain.pem" | awk '{print $1}')
+renewal_after_change "$before" "$after"
+RENEW
 }
 
 install_renewal() {
@@ -776,7 +968,8 @@ print_summary() {
     openssl x509 -in "$cert" -noout -enddate | sed 's/^/EXPIRES: /'
     say "CURRENT CERT PATH: $([[ -r $cert ]] && printf PASS || printf FAIL)"
     say "NGINX HTTP/80: $([[ $ACME_CHECK_PASSED == 1 ]] && printf PASS || printf FAIL)"
-    say "NGINX FALLBACK/8080: $(curl -fsS --max-time 5 http://127.0.0.1:8080/ | grep -q 'Hello World' && printf PASS || printf FAIL)"
+    say "NGINX FALLBACK/8080: $(http_backend_ready && printf PASS || printf FAIL)"
+    say "NGINX SELFSTEAL/9443: $(https_backend_ready && printf PASS || printf FAIL)"
     say "REMNANODE CERT VOLUME: $(grep -Fq "$CERT_MOUNT" "$NODE_COMPOSE" && printf PASS || printf FAIL)"
     say "CERT INSIDE CONTAINER: $(docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem && docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem && printf PASS || printf FAIL)"
     say "RENEW TIMER: $(systemctl is-active --quiet remna-cert-renew.timer && printf PASS || printf FAIL)"
@@ -784,6 +977,7 @@ print_summary() {
     [[ $udp == NOT_YET_LISTENING ]] && udp='NOT YET LISTENING'
     say "TCP 443: $tcp"
     say "UDP 443: $udp"
+    show_readiness
     say 'NOTE: 443 listeners appear only after the appropriate Remnawave Config Profile is assigned to the Node.'
     systemctl list-timers remna-cert-renew.timer --no-pager || true
     say 'Listeners:'; ss -lntup
@@ -881,11 +1075,50 @@ self_test() {
         die 'self-test HTTP E: missing managed Nginx server must fail'
     fi
     DOMAIN=$saved_domain
-    local rendered tmp
+    local rendered tls_rendered tmp bad_cert good_cert renew_log
     rendered=$(render_nginx node.example.com)
-    [[ $rendered == *'listen 127.0.0.1:8080;'* && $rendered == *'listen [::]:80;'* && $rendered != *'listen 443'* ]] || die 'self-test: Nginx template'
+    tls_rendered=$(render_nginx node.example.com 1)
+    [[ $rendered == *'listen 127.0.0.1:8080;'* && $rendered == *'listen [::]:80;'* && $rendered != *'listen 127.0.0.1:9443 ssl;'* ]] || die 'self-test Nginx 2: old TLS config shape'
+    [[ $tls_rendered == *'listen 127.0.0.1:8080;'* && $tls_rendered == *'listen 127.0.0.1:9443 ssl;'* && $tls_rendered != *$'listen 443;\n'* ]] || die 'self-test Nginx 1: fresh dual-backend config'
+    [[ $(grep -Fc 'listen 127.0.0.1:9443 ssl;' <<<"$tls_rendered") == 1 ]] || die 'self-test Nginx 3: old TLS Node must gain one 9443 backend'
+    [[ $tls_rendered == "$rendered"* ]] || die 'self-test Nginx 2: old managed block changed while adding 9443'
+    [[ $(render_nginx node.example.com 1) == "$tls_rendered" ]] || die 'self-test Nginx 4: both managed backends must remain idempotent'
+    if managed_nginx_9443_listener '127.0.0.1:9443 users:(("mystery",pid=101,fd=3))' "$tls_rendered"; then die 'self-test Nginx 5: foreign 9443 listener accepted'; fi
+    managed_nginx_9443_listener '127.0.0.1:9443 users:(("nginx",pid=101,fd=3))' "$tls_rendered" || die 'self-test Nginx 5: managed Nginx listener rejected'
     tmp=$(mktemp -d)
     trap 'rm -rf -- "$tmp"' RETURN
+    bad_cert=$tmp/bad-san.pem; good_cert=$tmp/good-san.pem
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tmp/bad.key" -out "$bad_cert" -days 2 -subj '/CN=other.example.com' -addext 'subjectAltName=DNS:other.example.com' >/dev/null 2>&1 || die 'self-test Cert 5: could not create mismatched test certificate'
+    openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tmp/good.key" -out "$good_cert" -days 2 -subj '/CN=node.example.com' -addext 'subjectAltName=DNS:node.example.com' >/dev/null 2>&1 || die 'self-test Cert 6: could not create matching test certificate'
+    DOMAIN=node.example.com
+    certificate_has_domain_san "$bad_cert" && die 'self-test Cert 5: mismatched SAN accepted'
+    certificate_has_domain_san "$good_cert" || die 'self-test Cert 6: matching SAN rejected'
+
+    renew_log=$tmp/renew.log
+    : >"$renew_log"
+    # These command stubs verify the renewal sequence without touching a live Node.
+    # shellcheck disable=SC2329
+    nginx() { local IFS=' '; printf 'nginx:%s\n' "$*" >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    systemctl() { local IFS=' '; printf 'systemctl:%s\n' "$*" >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    docker() { local IFS=' '; printf 'docker:%s\n' "$*" >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    sleep() { printf 'sleep:%s\n' "$*" >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    certificate_valid() { return 0; }
+    # shellcheck disable=SC2329
+    https_backend_ready() { printf 'https-backend\n' >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    container_certificate_ready() { printf 'container-certificate\n' >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    remnawave_core_ready() { printf 'rw-core\n' >>"$RENEW_TEST_LOG"; }
+    RENEW_TEST_LOG=$renew_log
+    renewal_after_change same same || die 'self-test renewal 7: unchanged certificate returned failure'
+    [[ ! -s $renew_log ]] || die 'self-test renewal 7: unchanged certificate triggered reload/restart'
+    renewal_after_change old new || die 'self-test renewal 8: changed certificate actions failed'
+    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttps-backend\ndocker:compose -f /opt/remnanode/docker-compose.yml restart remnanode\nsleep:15\ncontainer-certificate\nrw-core' ]] || die "self-test renewal 8: unexpected sequence: $(tr '\n' ',' <"$renew_log")"
+
     cat >"$tmp/compose.yml" <<'YAML'
 services:
   remnanode:
@@ -986,6 +1219,9 @@ YAML
     render_renew_script node.example.com >"$tmp/remna-cert-renew"
     bash -n "$tmp/remna-cert-renew" || die 'self-test: generated renewal script syntax'
     grep -Fq 'DOMAIN=node.example.com' "$tmp/remna-cert-renew" || die 'self-test: renewal domain'
+    if ! grep -Fq 'nginx -t' "$tmp/remna-cert-renew" || ! grep -Fq 'systemctl reload nginx' "$tmp/remna-cert-renew" || ! grep -Fq 'https_backend_ready' "$tmp/remna-cert-renew"; then
+        die 'self-test: renewal safety sequence missing'
+    fi
     say 'self-test: PASS'
 }
 
@@ -994,9 +1230,29 @@ if [[ ${1:-} == --self-test ]]; then self_test; exit 0; fi
 exec {TTY_FD}<>/dev/tty || die 'Требуется интерактивный терминал (/dev/tty).'
 trap on_exit EXIT
 menu
-[[ $MODE != 3 ]] || exit 0
-ask_value 'Домен этой Node: ' DOMAIN valid_domain
-ask_value "Email Let's Encrypt: " EMAIL valid_email
+case $MODE in
+    5) exit 0 ;;
+    3)
+        load_state || warn "Не найдено корректное состояние $STATE_FILE; сначала выполните Verify / repair."
+        show_readiness
+        exit 0
+        ;;
+    4)
+        load_state || warn "Не найдено корректное состояние $STATE_FILE; domain будет показан как placeholder."
+        show_profile_templates
+        exit 0
+        ;;
+    1|2) ;;
+    *) die 'Недопустимый пункт меню.' ;;
+esac
+if [[ $MODE == 2 ]]; then
+    load_state || die "Для перевыдачи требуется корректный $STATE_FILE. Сначала выполните Verify / repair."
+    ask_value "Email Let's Encrypt: " EMAIL valid_email
+else
+    load_state || true
+    ask_value 'Домен этой Node: ' DOMAIN valid_domain
+    ask_value "Email Let's Encrypt: " EMAIL valid_email
+fi
 check_prerequisites
 check_dns
 BACKUP_DIR=$(mktemp -d /var/backups/remna-node-tls.XXXXXX)
@@ -1004,9 +1260,22 @@ ensure_nginx
 ensure_certbot_compose
 issue_certificate
 ensure_node_volume
+NGINX_RELOADED=0
+ensure_nginx
+if ((CERTIFICATE_CHANGED)); then
+    if ((!NGINX_RELOADED)); then
+        nginx -t || die 'nginx -t failed after certificate changed.'
+        systemctl reload nginx || die 'Failed to reload Nginx after certificate changed.'
+    fi
+    docker compose -f "$NODE_COMPOSE" restart remnanode || die 'Failed to restart remnanode after certificate changed.'
+    sleep 15
+    if ! container_certificate_ready || ! remnawave_core_ready; then die 'Certificate changed but remnanode/rw-core verification failed.'; fi
+fi
+https_backend_ready || die 'HTTPS Selfsteal backend 127.0.0.1:9443 failed certificate/SAN/site validation.'
 install_renewal
+save_state
 docker ps
-docker top remnanode || die 'docker top remnanode failed.'
+docker top remnanode >/dev/null || die 'docker top remnanode failed.'
 nginx -t || die 'Final nginx -t failed.'
-curl -fsS http://127.0.0.1:8080/ | grep -q 'Hello World' || die 'Final fallback check failed.'
+http_backend_ready || die 'Final HTTP fallback check failed.'
 print_summary
