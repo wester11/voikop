@@ -51,6 +51,20 @@ every catalogued game endpoint, including the exact CDN hostnames listed above.
 It deliberately is not a default route: a single game profile is usually a
 better choice for latency and troubleshooting.
 
+Run `python generate_games_all.py` to rebuild the sorted, deterministic game
+aggregate from `games/*.domains.txt`; `python generate_games_all.py --check`
+verifies the checked-in output without writing. The generator rejects malformed
+entries, duplicate domains, IP literals, and reserved suffixes; Unicode IDNs
+must be reviewed and supplied as canonical ASCII A-labels beneath an ASCII
+public suffix. IDN public suffixes are not yet supported by the existing
+catalog validator. Specific shared-CDN hostnames are retained as candidates
+but produce warnings for human review.
+
+Use Linux (including WSL) for generator file access. It anchors source reads
+and atomic output publication to no-follow directory descriptors, rejects
+symlinked paths, and fails closed when the platform lacks these POSIX APIs.
+The existing catalog, compiler and public list paths are unchanged.
+
 Run `python validate_catalog.py` before any future integration. It checks
 domain syntax, duplicates within lists, overlap across catalog service lists,
 and that the AI and games profiles match the union of their service files.
