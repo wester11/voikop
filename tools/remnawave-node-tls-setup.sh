@@ -11,7 +11,7 @@ readonly RENEW_SERVICE=/etc/systemd/system/remna-cert-renew.service
 readonly RENEW_TIMER=/etc/systemd/system/remna-cert-renew.timer
 readonly STATE_FILE=/etc/remna-node-bootstrap.conf
 readonly CERT_MOUNT=/opt/certbot/certs:/etc/letsencrypt:ro
-DOMAIN='' EMAIL='' MODE='' TTY_FD='' UI_INPUT_FD='' UI_OUTPUT_FD='' BACKUP_DIR='' CANCELLED=0 NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
+DOMAIN='' EMAIL='' MODE='' TTY_FD='' UI_INPUT_FD='' UI_OUTPUT_FD='' BACKUP_DIR='' CANCELLED=0 NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 CERT_LINK_CHANGED=0 CERTBOT_COMPOSE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
 WEB_ROOT=/var/www/remna-node-site
 
 say() { printf '%s\n' "$*"; }
@@ -101,6 +101,7 @@ ask_value() {
 backup_file() {
     local path=$1 name=${1#/}
     name=${name//\//__}
+    if [[ -e $BACKUP_DIR/$name || -L $BACKUP_DIR/$name || -e $BACKUP_DIR/$name.absent ]]; then return 0; fi
     if [[ -e $path || -L $path ]]; then cp -a -- "$path" "$BACKUP_DIR/$name"; else : >"$BACKUP_DIR/$name.absent"; fi
 }
 restore_file() {
@@ -110,21 +111,44 @@ restore_file() {
     elif [[ -e $BACKUP_DIR/$name.absent ]]; then rm -f -- "$path"; fi
 }
 rollback() {
+    # Optional root is used only by --self-test to exercise rollback in a temp tree.
+    local test_root=${1:-} nginx_file=$NGINX_FILE node_compose=$NODE_COMPOSE node_dir=$NODE_DIR
+    local certbot_compose=$CERTBOT_DIR/docker-compose.yml current_link=$CERTS_DIR/live/current
+    local renew_script=$RENEW_SCRIPT renew_service=$RENEW_SERVICE renew_timer=$RENEW_TIMER
+    if [[ -n $test_root ]]; then
+        test_root=${test_root%/}
+        nginx_file=$test_root/etc/nginx/conf.d/remna-node-tls-setup.conf
+        node_dir=$test_root/opt/remnanode
+        node_compose=$node_dir/docker-compose.yml
+        certbot_compose=$test_root/opt/certbot/docker-compose.yml
+        current_link=$test_root/opt/certbot/certs/live/current
+        renew_script=$test_root/usr/local/sbin/remna-cert-renew
+        renew_service=$test_root/etc/systemd/system/remna-cert-renew.service
+        renew_timer=$test_root/etc/systemd/system/remna-cert-renew.timer
+    fi
     if ((NGINX_CHANGED)); then
-        restore_file "$NGINX_FILE" || warn 'Could not restore Nginx config.'
+        restore_file "$nginx_file" || warn 'Could not restore Nginx config.'
         if ((NGINX_WAS_ACTIVE)); then
             if nginx -t >/dev/null 2>&1; then systemctl reload nginx >/dev/null 2>&1 || warn 'Could not reload Nginx after rollback.'
             else warn 'Restored Nginx config did not validate; reload was skipped.'; fi
         fi
     fi
     if ((COMPOSE_CHANGED)); then
-        restore_file "$NODE_COMPOSE" || warn 'Could not restore Node Compose.'
-        (cd "$NODE_DIR" && docker compose up -d remnanode) >/dev/null 2>&1 || warn 'Could not restore remnanode after rollback.'
+        restore_file "$node_compose" || warn 'Could not restore Node Compose.'
+        (cd "$node_dir" && docker compose up -d remnanode) >/dev/null 2>&1 || warn 'Could not restore remnanode after rollback.'
+    fi
+    if ((CERTBOT_COMPOSE_CHANGED)); then
+        restore_file "$certbot_compose" || warn 'Could not restore Certbot Compose.'
+    fi
+    if ((CERT_LINK_CHANGED)); then
+        if [[ -L $current_link && $(readlink "$current_link" 2>/dev/null || true) == "$DOMAIN" ]]; then
+            rm -f -- "$current_link" || warn 'Could not remove the certificate symlink created by this run.'
+        fi
     fi
     if ((RENEWAL_CHANGED)); then
-        restore_file "$RENEW_SCRIPT" || warn 'Could not restore renewal script.'
-        restore_file "$RENEW_SERVICE" || warn 'Could not restore renewal service.'
-        restore_file "$RENEW_TIMER" || warn 'Could not restore renewal timer.'
+        restore_file "$renew_script" || warn 'Could not restore renewal script.'
+        restore_file "$renew_service" || warn 'Could not restore renewal service.'
+        restore_file "$renew_timer" || warn 'Could not restore renewal timer.'
         systemctl daemon-reload >/dev/null 2>&1 || warn 'Could not reload systemd after rollback.'
         if ((!RENEWAL_WAS_ACTIVE)); then
             systemctl stop remna-cert-renew.timer >/dev/null 2>&1 || true
@@ -1035,6 +1059,7 @@ ensure_certbot_compose() {
     local f=$CERTBOT_DIR/docker-compose.yml
     if [[ ! -f $f ]]; then
         backup_file "$f"
+        CERTBOT_COMPOSE_CHANGED=1
         cat >"$f" <<'YAML'
 services:
   certbot:
@@ -1049,8 +1074,10 @@ YAML
     case $patch_status in
         0) ;;
         10)
+            CERTBOT_COMPOSE_CHANGED=1
             if ! (cd "$CERTBOT_DIR" && docker compose config >/dev/null); then
                 restore_file "$f"
+                CERTBOT_COMPOSE_CHANGED=0
                 die 'Certbot Compose config invalid; backup restored and installer stopped.'
             fi
             ;;
@@ -1074,7 +1101,45 @@ certificate_valid() {
 
 remnawave_core_ready() {
     docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || return 1
-    docker top remnanode -eo comm 2>/dev/null | grep -Eiq '^(rw-core|xray)$'
+    docker top remnanode -eo pid,comm 2>/dev/null | grep -Eiq '^[[:space:]]*[0-9]+[[:space:]]+(rw-core|xray)([[:space:]]|$)'
+}
+
+verify_container_certificate() {
+    if ! docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true; then
+        warn 'Remnanode container is not running; certificate visibility inside the container cannot be checked.'
+        return 1
+    fi
+    if ! docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem; then
+        warn 'Certificate fullchain.pem is not readable inside Remnanode.'
+        return 1
+    fi
+    if ! docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem; then
+        warn 'Certificate privkey.pem is not readable inside Remnanode.'
+        return 1
+    fi
+    say 'Certificate files inside Remnanode: PASS'
+}
+
+wait_for_remnawave_core() {
+    local attempts=${1:-15} delay=${2:-2} attempt
+    for ((attempt=1; attempt<=attempts; attempt++)); do
+        remnawave_core_ready && return 0
+        ((attempt == attempts)) || sleep "$delay"
+    done
+    return 1
+}
+
+# shellcheck disable=SC2329 # Called from ensure_node_volume.
+wait_for_container_certificate() {
+    local attempts=${1:-15} delay=${2:-2} attempt
+    for ((attempt=1; attempt<=attempts; attempt++)); do
+        if container_certificate_ready; then
+            verify_container_certificate
+            return $?
+        fi
+        ((attempt == attempts)) || sleep "$delay"
+    done
+    verify_container_certificate
 }
 
 node_certificate_usage() {
@@ -1100,25 +1165,35 @@ print("USED" if used else "NOT_USED" if found else "UNKNOWN")' 2>/dev/null) || {
 }
 
 refresh_node_certificate_if_used() {
-    local usage interactive=${1:-0}
+    local usage interactive=${1:-0} compose_changed=${COMPOSE_CHANGED:-0}
     usage=$(node_certificate_usage)
     case $usage in
         USED)
-            if ((interactive)); then
-                confirm_or_cancel 'Xray/HY2 использует этот сертификат. Подтвердите restart Remnanode после обновления; VPN-подключения будут прерваны на время запуска.'
+            if ((compose_changed)); then
+                say 'Compose up -d уже пересоздал Remnanode после добавления certificate volume; дополнительный restart пропущен.'
+            else
+                if ((interactive)); then
+                    confirm_or_cancel 'Xray/HY2 использует этот сертификат. Подтвердите restart Remnanode после обновления; VPN-подключения будут прерваны на время запуска.'
+                fi
+                docker compose -f "$NODE_COMPOSE" restart remnanode || return 1
             fi
-            docker compose -f "$NODE_COMPOSE" restart remnanode || return 1
-            sleep 15
-            if ! container_certificate_ready || ! remnawave_core_ready; then
-                warn 'Remnanode certificate mount or rw-core check failed after restart.'
-                return 1
+            verify_container_certificate || return 1
+            if wait_for_remnawave_core; then
+                say 'rw-core/Xray process: PASS (VPN handshake and traffic are not tested).'
+            else
+                warn 'Certificate is available, but rw-core/Xray was not visible after 30 seconds. TLS setup remains valid; VPN readiness is NOT VERIFIED. Check Node status and Config Profile assignment in Remnawave.'
             fi
             ;;
         NOT_USED)
             say 'No Xray/Hysteria2 config references /etc/letsencrypt; Nginx was reloaded without restarting Remnanode.'
+            if remnawave_core_ready; then say 'rw-core/Xray process is running; VPN handshake and traffic are not tested.'
+            else warn 'No rw-core/Xray process is visible; VPN readiness is NOT VERIFIED. Check Node status and Config Profile assignment. TLS setup does not claim VPN readiness.'; fi
             ;;
         *)
-            warn 'Could not prove that Xray/Hysteria2 uses the renewed certificate; skipped Remnanode restart to preserve VPN uptime.'
+            if ((compose_changed)); then say 'Compose up -d already applied the certificate volume; no additional Remnanode restart will be made.'; fi
+            warn 'Could not determine whether Xray/HY2 uses the renewed certificate; Remnanode was not restarted to preserve VPN uptime. If it does use this certificate, its process may retain the previous certificate until a separately approved restart. Check Node status, Config Profile assignment, and the container configuration.'
+            if remnawave_core_ready; then say 'rw-core/Xray process is running; VPN handshake and traffic are not tested.'
+            else warn 'No rw-core/Xray process is visible; VPN readiness is NOT VERIFIED. Check Node status and Config Profile assignment. TLS setup does not claim VPN readiness.'; fi
             ;;
     esac
 }
@@ -1160,6 +1235,7 @@ issue_certificate() {
     else
         confirm_or_cancel "Будет создан symlink $current → $DOMAIN для выбора сертификата."
         ln -s "$DOMAIN" "$current"
+        CERT_LINK_CHANGED=1
     fi
     [[ -r $current/fullchain.pem && -r $current/privkey.pem ]] || die 'current certificate link unreadable.'
     local after
@@ -1187,10 +1263,9 @@ ensure_node_volume() {
         die 'docker compose config failed; прежний файл восстановлен.'
     fi
     (cd "$NODE_DIR" && docker compose up -d remnanode) || die 'Не удалось применить volume к remnanode.'
-    sleep 15
-    if ! docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || ! docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem || ! docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem; then
+    if ! wait_for_container_certificate; then
         docker logs --tail 100 remnanode || true
-        die 'Контейнер не запустился или сертификат недоступен после добавления volume.'
+        die 'Не удалось подтвердить доступность сертификата внутри Remnanode после добавления volume.'
     fi
 }
 
@@ -1205,7 +1280,7 @@ NODE_DIR=/opt/remnanode
 NODE_COMPOSE=/opt/remnanode/docker-compose.yml
 RENEW
     printf 'DOMAIN=%q\n' "$domain"
-    declare -f warn certificate_has_domain_san certificate_valid http_redirect_ready https_backend_ready container_certificate_ready remnawave_core_ready node_certificate_usage refresh_node_certificate_if_used renewal_after_change
+    declare -f say warn certificate_has_domain_san certificate_valid http_redirect_ready https_backend_ready container_certificate_ready remnawave_core_ready verify_container_certificate wait_for_container_certificate wait_for_remnawave_core node_certificate_usage refresh_node_certificate_if_used renewal_after_change
     cat <<'RENEW'
 before=$(sha256sum "$CERTS_DIR/live/current/fullchain.pem" | awk '{print $1}')
 (cd /opt/certbot && docker compose run --rm certbot renew --quiet)
@@ -1412,6 +1487,42 @@ self_test() {
     MOCK_TLS_HEADERS=$'HTTP/1.1 200 OK\r\n'
     if https_backend_ready /dev/null; then die 'self-test HTTPS A: missing HSTS header accepted'; fi
 
+    (
+        docker() {
+            local IFS=' '
+            case "$*" in
+                'inspect -f {{.State.Running}} remnanode') printf 'true\n' ;;
+                'top remnanode -eo pid,comm') printf 'PID COMMAND\n123 rw-core\n' ;;
+                *) return 1 ;;
+            esac
+        }
+        remnawave_core_ready || exit 1
+        docker() {
+            local IFS=' '
+            case "$*" in
+                'inspect -f {{.State.Running}} remnanode') printf 'true\n' ;;
+                'top remnanode -eo pid,comm') printf 'PID COMMAND\n' ;;
+                *) return 1 ;;
+            esac
+        }
+        if remnawave_core_ready; then exit 1; fi
+    ) || die 'self-test Node A: docker top must include PID and detect rw-core'
+    (
+        CORE_CHECK_COUNT=0
+        remnawave_core_ready() { CORE_CHECK_COUNT=$((CORE_CHECK_COUNT + 1)); ((CORE_CHECK_COUNT >= 9)); }
+        sleep() { :; }
+        wait_for_remnawave_core 10 2 || exit 1
+        [[ $CORE_CHECK_COUNT == 9 ]]
+    ) || die 'self-test Node B: core startup after the first 15 seconds must be accepted'
+    (
+        CERT_CHECK_COUNT=0
+        container_certificate_ready() { CERT_CHECK_COUNT=$((CERT_CHECK_COUNT + 1)); ((CERT_CHECK_COUNT >= 9)); }
+        verify_container_certificate() { [[ $CERT_CHECK_COUNT == 9 ]]; }
+        sleep() { :; }
+        wait_for_container_certificate 10 2 || exit 1
+        [[ $CERT_CHECK_COUNT == 9 ]]
+    ) || die 'self-test Node B2: delayed container certificate must be checked separately from core startup'
+
     renew_log=$tmp/renew.log
     : >"$renew_log"
     # These command stubs verify the renewal sequence without touching a live Node.
@@ -1434,21 +1545,97 @@ self_test() {
     # shellcheck disable=SC2329
     remnawave_core_ready() { printf 'rw-core\n' >>"$RENEW_TEST_LOG"; }
     # shellcheck disable=SC2329
+    verify_container_certificate() { printf 'container-certificate\n' >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
+    wait_for_remnawave_core() { printf 'rw-core\n' >>"$RENEW_TEST_LOG"; }
+    # shellcheck disable=SC2329
     node_certificate_usage() { printf '%s\n' "$RENEW_TEST_CERT_USAGE"; }
     RENEW_TEST_LOG=$renew_log
     RENEW_TEST_CERT_USAGE=NOT_USED
     renewal_after_change same same || die 'self-test renewal 7: unchanged certificate returned failure'
     [[ ! -s $renew_log ]] || die 'self-test renewal 7: unchanged certificate triggered reload/restart'
     renewal_after_change old new || die 'self-test renewal 8: changed certificate actions failed'
-    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend' ]] || die "self-test renewal 8: Nginx-only renewal must not restart Remnanode: $(tr '\n' ',' <"$renew_log")"
+    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend\nrw-core' ]] || die "self-test renewal 8: Nginx-only renewal must not restart Remnanode: $(tr '\n' ',' <"$renew_log")"
     : >"$renew_log"
     RENEW_TEST_CERT_USAGE=USED
     renewal_after_change old new || die 'self-test renewal 9: certificate consumer refresh failed'
-    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend\ndocker:compose -f /opt/remnanode/docker-compose.yml restart remnanode\nsleep:15\ncontainer-certificate\nrw-core' ]] || die "self-test renewal 9: Xray/Hysteria2 certificate use must refresh Remnanode: $(tr '\n' ',' <"$renew_log")"
+    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend\ndocker:compose -f /opt/remnanode/docker-compose.yml restart remnanode\ncontainer-certificate\nrw-core' ]] || die "self-test renewal 9: Xray/Hysteria2 certificate use must refresh Remnanode: $(tr '\n' ',' <"$renew_log")"
     : >"$renew_log"
     RENEW_TEST_CERT_USAGE=UNKNOWN
     renewal_after_change old new || die 'self-test renewal 10: unknown certificate use must not fail renewal'
-    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend' ]] || die "self-test renewal 10: unknown use must skip restart: $(tr '\n' ',' <"$renew_log")"
+    [[ $(cat "$renew_log") == $'nginx:-t\nsystemctl:reload nginx\nhttp-redirect\nhttps-backend\nrw-core' ]] || die "self-test renewal 10: unknown use must skip restart: $(tr '\n' ',' <"$renew_log")"
+
+    : >"$renew_log"
+    COMPOSE_CHANGED=1
+    RENEW_TEST_CERT_USAGE=USED
+    refresh_output=$(refresh_node_certificate_if_used 0 2>&1) || die 'self-test Node C: initial Compose apply should verify readiness'
+    [[ $(cat "$renew_log") == $'container-certificate\nrw-core' ]] || die "self-test Node C: Compose apply must not trigger a second restart: $(tr '\n' ',' <"$renew_log")"
+    [[ $refresh_output == *'дополнительный restart пропущен'* ]] || die 'self-test Node C: duplicate restart was not clearly skipped'
+    COMPOSE_CHANGED=0
+
+    : >"$renew_log"
+    COMPOSE_CHANGED=1
+    RENEW_TEST_CERT_USAGE=UNKNOWN
+    remnawave_core_ready() { return 1; }
+    refresh_output=$(refresh_node_certificate_if_used 0 2>&1) || die 'self-test Node C2: first install without assigned Xray profile must not fail TLS setup'
+    [[ ! -s $renew_log ]] || die "self-test Node C2: an unassigned profile must not cause restart: $(tr '\n' ',' <"$renew_log")"
+    [[ $refresh_output == *'VPN readiness'* && $refresh_output == *'NOT VERIFIED'* ]] || die 'self-test Node C2: missing Xray process must be reported as unverified VPN readiness'
+    COMPOSE_CHANGED=0
+    remnawave_core_ready() { printf 'rw-core\n' >>"$RENEW_TEST_LOG"; }
+
+    : >"$renew_log"
+    RENEW_TEST_CERT_USAGE=UNKNOWN
+    refresh_output=$(refresh_node_certificate_if_used 0 2>&1) || die 'self-test Node D: unknown use must not fail TLS setup'
+    [[ $(cat "$renew_log") == 'rw-core' ]] || die "self-test Node D: unknown use must not restart Remnanode: $(tr '\n' ',' <"$renew_log")"
+    [[ $refresh_output == *'previous certificate'* && $refresh_output == *'was not restarted'* ]] || die 'self-test Node D: unknown certificate-use stale risk was hidden'
+
+    (
+        BACKUP_DIR=$tmp/rollback-backup
+        test_root=$tmp/rollback-root
+        test_nginx=$test_root/etc/nginx/conf.d/remna-node-tls-setup.conf
+        test_node_dir=$test_root/opt/remnanode
+        test_node_compose=$test_node_dir/docker-compose.yml
+        test_certbot_dir=$test_root/opt/certbot
+        test_certbot_compose=$test_certbot_dir/docker-compose.yml
+        test_certs_dir=$test_certbot_dir/certs
+        test_current_link=$test_certs_dir/live/current
+        test_renew_script=$test_root/usr/local/sbin/remna-cert-renew
+        test_renew_service=$test_root/etc/systemd/system/remna-cert-renew.service
+        test_renew_timer=$test_root/etc/systemd/system/remna-cert-renew.timer
+        mkdir -p "$BACKUP_DIR" "$test_root/etc/nginx/conf.d" "$test_root/usr/local/sbin" "$test_root/etc/systemd/system" "$test_node_dir" "$test_certbot_dir" "$test_certs_dir/live/node.example.com"
+        DOMAIN=node.example.com
+        : >"$tmp/rollback-actions.log"
+
+        backup_file "$test_nginx"
+        printf 'temporary nginx stage\n' >"$test_nginx"
+        backup_file "$test_nginx"
+        printf 'original node compose\n' >"$test_node_compose"
+        backup_file "$test_node_compose"
+        printf 'compose with new cert mount\n' >"$test_node_compose"
+        backup_file "$test_node_compose"
+        backup_file "$test_certbot_compose"
+        printf 'temporary certbot compose\n' >"$test_certbot_compose"
+        for file in "$test_renew_script" "$test_renew_service" "$test_renew_timer"; do backup_file "$file"; printf 'temporary renewal file\n' >"$file"; done
+        printf 'certificate material retained after rollback test\n' >"$test_certs_dir/live/node.example.com/fullchain.pem"
+        ln -s node.example.com "$test_current_link"
+
+        NGINX_CHANGED=1 NGINX_WAS_ACTIVE=1 COMPOSE_CHANGED=1 CERTBOT_COMPOSE_CHANGED=1 CERT_LINK_CHANGED=1 RENEWAL_CHANGED=1 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0
+        nginx() { [[ $* == -t ]]; }
+        systemctl() { local IFS=' '; printf 'systemctl:%s\n' "$*" >>"$tmp/rollback-actions.log"; }
+        docker() { local IFS=' '; printf 'docker:%s\n' "$*" >>"$tmp/rollback-actions.log"; }
+        warn() { printf 'warning:%s\n' "$*" >>"$tmp/rollback-actions.log"; }
+        rollback "$test_root"
+
+        [[ ! -e $test_nginx && ! -L $test_nginx ]] || exit 1
+        [[ $(cat "$test_node_compose") == 'original node compose' ]] || exit 1
+        [[ ! -e $test_certbot_compose && ! -L $test_certbot_compose ]] || exit 1
+        [[ ! -e $test_current_link && ! -L $test_current_link ]] || exit 1
+        [[ -r $test_certs_dir/live/node.example.com/fullchain.pem ]] || exit 1
+        [[ ! -e $test_renew_script && ! -e $test_renew_service && ! -e $test_renew_timer ]] || exit 1
+        grep -Fq 'docker:compose up -d remnanode' "$tmp/rollback-actions.log" || exit 1
+        grep -Fq 'systemctl:daemon-reload' "$tmp/rollback-actions.log" || exit 1
+        grep -Fq 'systemctl:disable remna-cert-renew.timer' "$tmp/rollback-actions.log" || exit 1
+    ) || die 'self-test rollback A: first-install files, Compose, symlink, or timer were not restored safely'
 
     cat >"$tmp/compose.yml" <<'YAML'
 services:
