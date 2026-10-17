@@ -632,7 +632,8 @@ show_readiness() {
     local dns4='' dns6='' dns_state='FAIL' cert_state='FAIL' expiry='не определён' expiry_state='NOT TESTED'
     local domain_state='NOT TESTED' nginx_state='FAIL' redirect_state='NOT TESTED' https_state='NOT TESTED' tls12='NOT TESTED' tls13='NOT TESTED'
     local hsts_state='NOT TESTED' reality_state='NOT TESTED' vless_state='NOT TESTED'
-    local hy2_state='FAIL' remna_state='FAIL' inside_state='FAIL' timer_state='FAIL' headers=''
+    local hy2_state='FAIL' remna_state='FAIL' core_state='FAIL' listener_state='NOT TESTED'
+    local mount_state='NOT TESTED' inside_state='FAIL' timer_state='FAIL' headers='' listener_owner='unknown'
 
     ui_print ''
     ui_print 'СТАТУС TLS / SELFSTEAL · только чтение'
@@ -668,6 +669,14 @@ show_readiness() {
     fi
     active_mode=$(detect_active_mode)
     if docker inspect -f '{{.State.Status}}' remnanode 2>/dev/null | grep -qx running; then remna_state=PASS; fi
+    remnawave_core_ready && core_state=PASS || true
+    listener_owner=$(classify_443_owner tcp)
+    case $listener_owner in
+        remnawave) listener_state=PASS ;;
+        free) listener_state=FAIL ;;
+        nginx|unknown) listener_state=WARNING ;;
+    esac
+    mount_state=$(node_certificate_mount_status)
     if container_certificate_ready; then
         inside_state=PASS
         [[ $cert_state == PASS ]] && hy2_state=PASS
@@ -692,6 +701,9 @@ show_readiness() {
     status_row 'TLS 1.2' "$tls12" 'отдельный запрос к HTTPS backend'
     status_row 'TLS 1.3' "$tls13" 'отдельный запрос к HTTPS backend'
     status_row 'HSTS' "$hsts_state" 'ожидается Strict-Transport-Security max-age=300'
+    status_row 'TCP/443' "$listener_state" "владелец listener: $listener_owner; TLS не подтверждает VLESS handshake"
+    status_row 'rw-core/Xray' "$core_state" 'процесс в контейнере; это не подтверждает VPN handshake или трафик'
+    status_row 'Docker volume' "$mount_state" "ожидается read-only $CERTS_DIR:/etc/letsencrypt"
     case $reality_state in
         WARNING) status_row 'REALITY SELFSTEAL' "$reality_state" 'HTTPS backend доступен; VPN-handshake и трафик NOT TESTED' ;;
         FAIL) status_row 'REALITY SELFSTEAL' "$reality_state" 'режим обнаружен, но HTTPS backend не прошёл проверку; VPN-handshake NOT TESTED' ;;
@@ -717,6 +729,26 @@ show_readiness() {
 container_certificate_ready() {
     docker exec remnanode test -r /etc/letsencrypt/live/current/fullchain.pem &&
         docker exec remnanode test -r /etc/letsencrypt/live/current/privkey.pem
+}
+
+node_certificate_mount_status() {
+    local mounts
+    mounts=$(docker inspect -f '{{json .Mounts}}' remnanode 2>/dev/null) || { printf 'NOT TESTED\n'; return 0; }
+    python3 - "$CERTS_DIR" "$mounts" <<'PY'
+import json, os, sys
+try:
+    mounts = json.loads(sys.argv[2])
+except (TypeError, ValueError):
+    print("NOT TESTED")
+    raise SystemExit(0)
+expected = os.path.realpath(sys.argv[1])
+for mount in mounts:
+    if mount.get("Destination") == "/etc/letsencrypt":
+        source = os.path.realpath(mount.get("Source", ""))
+        print("PASS" if source == expected and not mount.get("RW", True) else "FAIL")
+        raise SystemExit(0)
+print("FAIL")
+PY
 }
 
 managed_nginx_9443_listener() {
@@ -1276,7 +1308,6 @@ render_renew_script() {
 # Managed by remnawave-node-tls-setup.sh
 set -Eeuo pipefail
 CERTS_DIR=/opt/certbot/certs
-NODE_DIR=/opt/remnanode
 NODE_COMPOSE=/opt/remnanode/docker-compose.yml
 RENEW
     printf 'DOMAIN=%q\n' "$domain"
@@ -1812,15 +1843,20 @@ PY
     readonly_log=$tmp/read-only-actions.log
     : >"$readonly_log"
     READONLY_ACTION_LOG=$readonly_log
+    MOCK_EMPTY_MOUNT=0 MOCK_CORE_READY=1 MOCK_443_OWNER=remnawave MOCK_HOST_CERT=1 MOCK_CONTAINER_CERT=1 MOCK_ACTIVE_MODE='REALITY SELFSTEAL'
     # The read-only menu tests reject all service/configuration mutation commands.
     # shellcheck disable=SC2329
     load_state() { DOMAIN=node.example.com; WEB_ROOT=/var/www/remna-node-site; return 0; }
     # shellcheck disable=SC2329
-    certificate_valid() { return 0; }
+    certificate_valid() { ((MOCK_HOST_CERT)); }
     # shellcheck disable=SC2329
-    certificate_has_domain_san() { return 0; }
+    certificate_has_domain_san() { ((MOCK_HOST_CERT)); }
     # shellcheck disable=SC2329
-    container_certificate_ready() { return 0; }
+    container_certificate_ready() { ((MOCK_CONTAINER_CERT)); }
+    # shellcheck disable=SC2329
+    remnawave_core_ready() { ((MOCK_CORE_READY)); }
+    # shellcheck disable=SC2329
+    classify_443_owner() { printf '%s\n' "$MOCK_443_OWNER"; }
     # shellcheck disable=SC2329
     http_redirect_ready() { return 0; }
     # shellcheck disable=SC2329
@@ -1828,7 +1864,7 @@ PY
     # shellcheck disable=SC2329
     https_protocol_ready() { return 0; }
     # shellcheck disable=SC2329
-    detect_active_mode() { printf 'REALITY SELFSTEAL\n'; }
+    detect_active_mode() { printf '%s\n' "$MOCK_ACTIVE_MODE"; }
     # shellcheck disable=SC2329
     getent() { [[ $1 == ahostsv4 ]] && printf '192.0.2.20 STREAM test\n' || printf '2001:db8::20 STREAM test\n'; }
     # shellcheck disable=SC2329
@@ -1849,6 +1885,9 @@ PY
         case "$*" in
             "inspect -f {{.State.Status}} remnanode") printf 'running\n' ;;
             "inspect -f {{.State.Running}} remnanode") printf 'true\n' ;;
+            "inspect -f {{json .Mounts}} remnanode")
+                if ((MOCK_EMPTY_MOUNT)); then printf '[]\n'
+                else printf '[{"Source":"/opt/certbot/certs","Destination":"/etc/letsencrypt","RW":false}]\n'; fi ;;
             'exec remnanode test -r '*) return 0 ;;
             'exec remnanode sh -c '*) printf '{"inbounds":[{"streamSettings":{"security":"reality"}}]}\n' ;;
             *) printf 'docker %s\n' "$*" >>"$READONLY_ACTION_LOG"; return 1 ;;
@@ -1887,7 +1926,7 @@ PY
     grep -Fq 'HTTP 301' "$ui_output_path" || die 'self-test read-only: status table missing HTTP 301'
     if ! grep -Fq 'REALITY SELFSTEAL' "$ui_output_path" || ! grep -Fq '| WARNING' "$ui_output_path"; then die 'self-test read-only: handshake disclaimer missing'; fi
     if ! grep -Fq 'HY2 certificate' "$ui_output_path" || ! grep -Fq '| PASS' "$ui_output_path"; then die 'self-test read-only: HY2 certificate qualification missing'; fi
-    for menu_expected in 'Домен' 'DNS' 'Сертификат' 'Окончание сертификата' 'Nginx' 'HTTP 301' 'HTTPS 9443' 'TLS 1.2' 'TLS 1.3' 'HSTS' 'REALITY SELFSTEAL' 'VLESS TLS' 'HY2 certificate' 'Remnanode' 'Сертификат в контейнере' 'Таймер продления'; do
+    for menu_expected in 'Домен' 'DNS' 'Сертификат' 'Окончание сертификата' 'Nginx' 'HTTP 301' 'HTTPS 9443' 'TLS 1.2' 'TLS 1.3' 'HSTS' 'TCP/443' 'rw-core/Xray' 'Docker volume' 'REALITY SELFSTEAL' 'VLESS TLS' 'HY2 certificate' 'Remnanode' 'Сертификат в контейнере' 'Таймер продления'; do
         grep -Fq "$menu_expected" "$ui_output_path" || die "self-test read-only: status field missing: $menu_expected"
     done
     python3 - "$ui_output_path" 40 <<'PY' || die 'self-test read-only: narrow status layout exceeds width'
@@ -1902,6 +1941,24 @@ if bad:
     raise SystemExit(1)
 PY
     [[ ! -s $READONLY_ACTION_LOG ]] || die "self-test read-only: status invoked a service/configuration mutation: $(cat "$READONLY_ACTION_LOG")"
+
+    # Regression: Nginx/9443 and rw-core/443 can be healthy while the Xray
+    # certificate path and Docker mount are absent. Report each state separately.
+    MOCK_EMPTY_MOUNT=1 MOCK_HOST_CERT=0 MOCK_CONTAINER_CERT=0 MOCK_ACTIVE_MODE=TLS
+    : >"$ui_output_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_OUTPUT_FD=$output_fd
+    run_readonly_action 3 || die 'self-test certificate visibility: status action failed'
+    exec {output_fd}>&-
+    grep -Fq 'HTTPS 9443 | PASS' "$ui_output_path" || die 'self-test certificate visibility: healthy Nginx backend was misreported'
+    grep -Fq 'Сертификат | FAIL' "$ui_output_path" || die 'self-test certificate visibility: missing expected host certificate was hidden'
+    grep -Fq 'TCP/443 | PASS' "$ui_output_path" || die 'self-test certificate visibility: active TCP/443 listener was misreported'
+    grep -Fq 'rw-core/Xray | PASS' "$ui_output_path" || die 'self-test certificate visibility: active rw-core was misreported'
+    grep -Fq 'Docker volume | FAIL' "$ui_output_path" || die 'self-test certificate visibility: missing Docker mount was hidden'
+    grep -Fq 'Сертификат в контейнере | FAIL' "$ui_output_path" || die 'self-test certificate visibility: missing in-container certificate was hidden'
+    grep -Fq 'VLESS TLS | FAIL' "$ui_output_path" || die 'self-test certificate visibility: TLS readiness was inferred from rw-core alone'
+    [[ ! -s $READONLY_ACTION_LOG ]] || die 'self-test certificate visibility: read-only status invoked a mutation'
+
     : >"$ui_output_path"
     exec {output_fd}>"$ui_output_path"
     UI_OUTPUT_FD=$output_fd
