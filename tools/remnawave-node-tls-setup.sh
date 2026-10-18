@@ -10,9 +10,11 @@ readonly RENEW_SCRIPT=/usr/local/sbin/remna-cert-renew
 readonly RENEW_SERVICE=/etc/systemd/system/remna-cert-renew.service
 readonly RENEW_TIMER=/etc/systemd/system/remna-cert-renew.timer
 readonly STATE_FILE=/etc/remna-node-bootstrap.conf
+readonly TRANSPORT_STATE_DIR=/var/lib/remna-node-transport-manager
 readonly CERT_MOUNT=/opt/certbot/certs:/etc/letsencrypt:ro
 DOMAIN='' EMAIL='' MODE='' TTY_FD='' UI_INPUT_FD='' UI_OUTPUT_FD='' BACKUP_DIR='' CANCELLED=0 NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 CERT_LINK_CHANGED=0 CERTBOT_COMPOSE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
 WEB_ROOT=/var/www/remna-node-site
+TRANSPORT_STATE_OVERRIDE=''
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -270,7 +272,7 @@ backup_dir = pathlib.Path(os.environ["COMPOSE_BACKUP_DIR"])
 raw = path.read_bytes()
 text = raw.decode("utf-8")
 lines = text.splitlines(keepends=True)
-newline = "\r\n" if "\r\n" in text else "\n"
+newline = "\n" if "\n" in text else "\n"
 
 def fail(message):
     print(message, file=sys.stderr)
@@ -343,7 +345,7 @@ if volumes_index is not None and inline:
         fail("Inline volumes syntax unsupported; refusing edit.")
     if inline == "[]":
         empty_volumes = True
-        comment = re.search(r"\s+#.*$", lines[volumes_index].rstrip("\r\n"))
+        comment = re.search(r"\s+#.*$", lines[volumes_index].rstrip("\n"))
         suffix = (" " + comment.group(0).strip()) if comment else ""
         lines[volumes_index] = " " * field_indent + "volumes:" + suffix + newline
 
@@ -466,7 +468,9 @@ menu() {
         ui_print '[3] Показать статус TLS / Selfsteal'
         ui_wrap 'Только чтение: проверки без правки файлов и без перезапуска сервисов.'
         ui_print '[4] Шаблоны профилей Remnawave'
-        ui_wrap 'Только чтение: примеры настроек, без изменений на сервере.'
+        ui_wrap 'Только чтение: TLS и REALITY шаблоны. Для дополнительных транспортов откройте менеджер.'
+        ui_print '[T] Транспорты'
+        ui_wrap 'Статус, проверка совместимости и подготовка обезличенного кандидата. Активация профиля остаётся в Remnawave.'
         ui_print '[H] Подробная справка'
         ui_wrap 'Только чтение: действия, файлы, риски и откат.'
         ui_print '[5] Выход'
@@ -474,12 +478,13 @@ menu() {
         if ! ui_read choice; then MODE=5; return 0; fi
         case ${choice,,} in
             1|2|3|4|5) MODE=$choice; return 0 ;;
+            t) MODE=6; return 0 ;;
             h)
                 show_detailed_help
                 printf 'Нажмите Enter, чтобы вернуться в меню: ' >&"$fd"
                 if ! ui_read choice; then MODE=5; return 0; fi
                 ;;
-            *) ui_print 'Неизвестный пункт. Введите 1–5 или H.' ;;
+            *) ui_print 'Неизвестный пункт. Введите 1–5, T или H.' ;;
         esac
     done
 }
@@ -495,6 +500,10 @@ show_detailed_help() {
     ui_wrap '3. Статус TLS / Selfsteal. Когда использовать: диагностика без исправлений. Проверяет DNS, срок и SAN сертификата, Nginx, HTTP 301, HTTPS на 9443, TLS 1.2/1.3, HSTS, состояние Remnanode, доступ сертификата из контейнера и таймер продления. REALITY/VLESS handshake и передача VPN-трафика не проверяются. Файлы не меняет; сервисы не перезапускает. Риск: только короткие локальные сетевые запросы. Откат не нужен.'
     ui_print ''
     ui_wrap '4. Шаблоны профилей Remnawave. Когда использовать: при ручном создании Config Profile. Только показывает примеры TLS и REALITY SELFSTEAL. Никакие файлы и профили не меняет, сервисы не перезапускает. Риск отсутствует; откат не нужен.'
+    ui_print ''
+    ui_wrap 'T. Менеджер транспортов. Статус, совместимость, шаблоны TCP TLS / TCP REALITY / XHTTP REALITY / XHTTP TLS / gRPC TLS и план ручной активации. Подготовка записывает только новые файлы кандидата в /var/lib/remna-node-transport-manager; Nginx, Docker, сертификаты, Xray и Remnawave не меняет, сервисы не перезапускает. Каждый кандидат уникален, предыдущие сохраняются в истории. Активация через API не выполняется; профиль и Host меняются вручную в панели после проверки зависимостей и отдельного согласования. Откат уже активного профиля выполняется возвратом предыдущего профиля и Host в панели.'
+    ui_print ''
+    ui_wrap 'XHTTP режим auto/stream-one/stream-up/packet-up относится к клиентскому профилю; серверный inbound без явного mode сохраняет стандартную поддержку режимов. Наборы Xray-клиентов — только шаблоны, не импорт Happ и не подтверждение совместимости iOS/Android.'
     ui_print ''
     ui_wrap '5. Выход. Завершает установщик. Проверок, изменений файлов и перезапуска сервисов нет. Откат не нужен.'
     ui_print ''
@@ -806,6 +815,603 @@ show_profile_templates() {
     ui_wrap "REALITY serverNames не поддерживает wildcard. Добавьте домен этой Node в общий список serverNames: ${DOMAIN:-<DOMAIN>}"
     ui_wrap 'Для общего профиля используйте общий REALITY privateKey; укажите все домены Nodes в serverNames и Host Address/SNI; target оставьте 127.0.0.1:9443.'
     ui_wrap 'Риск общего privateKey: компрометация одной Node требует ротации ключа для всей группы.'
+    ui_print ''
+    ui_wrap 'Другие обезличенные inbound snippets и XHTTP client mode варианты формируются через T → Менеджер транспортов → Подготовить. Это JSON-фрагменты, а не полные профили и не готовая активация.'
+    ui_wrap 'XHTTP TLS и gRPC TLS создаются как loopback-кандидаты на 8443/8444; без отдельной проверенной Nginx HTTP/2 маршрутизации они не обслуживают сайт и не готовы к активации. gRPC не имеет обычного fallback.'
+}
+
+transport_state_root() {
+    printf '%s\n' "${TRANSPORT_STATE_OVERRIDE:-$TRANSPORT_STATE_DIR}"
+}
+
+transport_slug() {
+    case $1 in
+        tcp_tls) printf 'tcp-tls\n' ;;
+        tcp_reality) printf 'tcp-reality\n' ;;
+        xhttp_reality) printf 'xhttp-reality\n' ;;
+        xhttp_tls) printf 'xhttp-tls\n' ;;
+        grpc_tls) printf 'grpc-tls\n' ;;
+        xhttp_modes) printf 'xhttp-client-modes\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+transport_label() {
+    case $1 in
+        tcp_tls) printf 'VLESS RAW/TCP + TLS\n' ;;
+        tcp_reality) printf 'VLESS RAW/TCP + REALITY SELFSTEAL\n' ;;
+        xhttp_reality) printf 'VLESS XHTTP + REALITY SELFSTEAL\n' ;;
+        xhttp_tls) printf 'VLESS XHTTP + TLS\n' ;;
+        grpc_tls) printf 'VLESS gRPC + TLS\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+render_transport_inbound() {
+    local transport=$1 domain=$2
+    valid_domain "$domain" || return 2
+    case $transport in
+        tcp_tls)
+            cat <<EOF
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "0.0.0.0",
+  "port": 443,
+  "protocol": "vless",
+  "settings": {
+    "clients": [],
+    "decryption": "none",
+    "fallbacks": [{"dest": "127.0.0.1:8080"}]
+  },
+  "streamSettings": {
+    "network": "raw",
+    "security": "tls",
+    "tlsSettings": {
+      "minVersion": "1.2",
+      "maxVersion": "1.3",
+      "certificates": [{
+        "certificateFile": "/etc/letsencrypt/live/current/fullchain.pem",
+        "keyFile": "/etc/letsencrypt/live/current/privkey.pem"
+      }]
+    }
+  }
+}
+EOF
+            ;;
+        tcp_reality)
+            cat <<EOF
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "0.0.0.0",
+  "port": 443,
+  "protocol": "vless",
+  "settings": {"clients": [], "decryption": "none"},
+  "streamSettings": {
+    "network": "raw",
+    "security": "reality",
+    "realitySettings": {
+      "target": "127.0.0.1:9443",
+      "xver": 0,
+      "serverNames": ["$domain"],
+      "privateKey": "__REUSE_EXISTING_NODE_PRIVATE_KEY__",
+      "shortIds": ["__REUSE_EXISTING_NODE_SHORT_ID__"]
+    }
+  }
+}
+EOF
+            ;;
+        xhttp_reality)
+            cat <<EOF
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "0.0.0.0",
+  "port": 443,
+  "protocol": "vless",
+  "settings": {"clients": [], "decryption": "none"},
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "realitySettings": {
+      "target": "127.0.0.1:9443",
+      "xver": 0,
+      "serverNames": ["$domain"],
+      "privateKey": "__REUSE_EXISTING_NODE_PRIVATE_KEY__",
+      "shortIds": ["__REUSE_EXISTING_NODE_SHORT_ID__"]
+    },
+    "xhttpSettings": {"path": "/__SET_SHARED_XHTTP_PATH__"}
+  }
+}
+EOF
+            ;;
+        xhttp_tls)
+            cat <<EOF
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "127.0.0.1",
+  "port": 8443,
+  "protocol": "vless",
+  "settings": {"clients": [], "decryption": "none"},
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$domain",
+      "minVersion": "1.2",
+      "maxVersion": "1.3",
+      "alpn": ["h2", "http/1.1"],
+      "certificates": [{
+        "certificateFile": "/etc/letsencrypt/live/current/fullchain.pem",
+        "keyFile": "/etc/letsencrypt/live/current/privkey.pem"
+      }]
+    },
+    "xhttpSettings": {"path": "/__SET_SHARED_XHTTP_PATH__"}
+  }
+}
+EOF
+            ;;
+        grpc_tls)
+            cat <<EOF
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "127.0.0.1",
+  "port": 8444,
+  "protocol": "vless",
+  "settings": {"clients": [], "decryption": "none"},
+  "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$domain",
+      "minVersion": "1.2",
+      "maxVersion": "1.3",
+      "alpn": ["h2", "http/1.1"],
+      "certificates": [{
+        "certificateFile": "/etc/letsencrypt/live/current/fullchain.pem",
+        "keyFile": "/etc/letsencrypt/live/current/privkey.pem"
+      }]
+    },
+    "grpcSettings": {"serviceName": "__SET_UNIQUE_SERVICE_NAME__"}
+  }
+}
+EOF
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+render_xhttp_client_mode() {
+    local domain=$1 mode=$2
+    valid_domain "$domain" || return 2
+    case $mode in auto|stream-one|stream-up|packet-up) ;; *) return 2 ;; esac
+    cat <<EOF
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [{
+      "address": "$domain",
+      "port": 443,
+      "users": [{"id": "__SET_USER_UUID__", "encryption": "none"}]
+    }]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "realitySettings": {
+      "serverName": "$domain",
+      "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__",
+      "publicKey": "__SET_PUBLIC_KEY_FROM_PANEL__",
+      "shortId": "__SET_EXISTING_SHORT_ID__",
+      "spiderX": "/"
+    },
+    "xhttpSettings": {
+      "path": "/__SET_SHARED_XHTTP_PATH__",
+      "mode": "$mode"
+    }
+  }
+}
+EOF
+}
+
+render_transport_client() {
+    local transport=$1 domain=$2
+    valid_domain "$domain" || return 2
+    case $transport in
+        tcp_tls)
+            cat <<EOF
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {"vnext": [{"address": "$domain", "port": 443, "users": [{"id": "__SET_USER_UUID__", "encryption": "none"}]}]},
+  "streamSettings": {
+    "network": "raw",
+    "security": "tls",
+    "tlsSettings": {"serverName": "$domain", "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__", "alpn": ["h2", "http/1.1"]}
+  }
+}
+EOF
+            ;;
+        tcp_reality)
+            cat <<EOF
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {"vnext": [{"address": "$domain", "port": 443, "users": [{"id": "__SET_USER_UUID__", "encryption": "none"}]}]},
+  "streamSettings": {
+    "network": "raw",
+    "security": "reality",
+    "realitySettings": {"serverName": "$domain", "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__", "publicKey": "__SET_PUBLIC_KEY_FROM_PANEL__", "shortId": "__SET_EXISTING_SHORT_ID__", "spiderX": "/"}
+  }
+}
+EOF
+            ;;
+        xhttp_tls)
+            cat <<EOF
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {"vnext": [{"address": "$domain", "port": 443, "users": [{"id": "__SET_USER_UUID__", "encryption": "none"}]}]},
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {"serverName": "$domain", "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__", "alpn": ["h2", "http/1.1"]},
+    "xhttpSettings": {"path": "/__SET_SHARED_XHTTP_PATH__", "mode": "auto"}
+  }
+}
+EOF
+            ;;
+        grpc_tls)
+            cat <<EOF
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {"vnext": [{"address": "$domain", "port": 443, "users": [{"id": "__SET_USER_UUID__", "encryption": "none"}]}]},
+  "streamSettings": {
+    "network": "grpc",
+    "security": "tls",
+    "tlsSettings": {"serverName": "$domain", "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__", "alpn": ["h2"]},
+    "grpcSettings": {"serviceName": "__SET_UNIQUE_SERVICE_NAME__"}
+  }
+}
+EOF
+            ;;
+        *) return 2 ;;
+    esac
+}
+
+extract_transport_pairs() {
+    python3 -c 'import json,sys
+s=sys.stdin.read(); d=json.JSONDecoder(); pairs=set()
+def walk(v):
+    if isinstance(v,dict):
+        for inbound in v.get("inbounds",[]):
+            if not isinstance(inbound,dict): continue
+            ss=inbound.get("streamSettings") or {}
+            if not isinstance(ss,dict): continue
+            network=ss.get("network") or "raw"
+            security=ss.get("security") or "none"
+            if isinstance(network,str) and isinstance(security,str): pairs.add(network+"|"+security)
+        for child in v.values(): walk(child)
+    elif isinstance(v,list):
+        for child in v: walk(child)
+i=0
+while i<len(s):
+    while i<len(s) and s[i].isspace(): i+=1
+    if i>=len(s): break
+    try: value,end=d.raw_decode(s,i)
+    except json.JSONDecodeError: break
+    walk(value); i=end
+for pair in sorted(pairs): print(pair)'
+}
+
+runtime_transport_pairs() {
+    local config
+    docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || return 1
+    config=$(docker exec remnanode sh -c 'find /etc /usr/local/etc /opt/remnanode -type f -name "*.json" -exec cat {} \; 2>/dev/null' 2>/dev/null) || return 1
+    printf '%s' "$config" | extract_transport_pairs
+}
+
+transport_pair_label() {
+    case $1 in
+        raw\|tls) printf 'VLESS RAW/TCP + TLS\n' ;;
+        raw\|reality) printf 'VLESS RAW/TCP + REALITY\n' ;;
+        xhttp\|reality) printf 'VLESS XHTTP + REALITY\n' ;;
+        xhttp\|tls) printf 'VLESS XHTTP + TLS\n' ;;
+        grpc\|tls) printf 'VLESS gRPC + TLS\n' ;;
+        grpc\|reality) printf 'VLESS gRPC + REALITY\n' ;;
+        *) printf 'другой транспорт (%s)\n' "$1" ;;
+    esac
+}
+
+transport_pair_active() {
+    local pairs=$1 pair=$2
+    grep -Fxq "$pair" <<<"$pairs"
+}
+
+transport_pair_slug() {
+    case $1 in
+        raw\|tls) printf 'tcp-tls\n' ;;
+        raw\|reality) printf 'tcp-reality\n' ;;
+        xhttp\|reality) printf 'xhttp-reality\n' ;;
+        xhttp\|tls) printf 'xhttp-tls\n' ;;
+        grpc\|tls) printf 'grpc-tls\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+transport_candidate_prepared() {
+    local slug=$1 root path
+    root=$(transport_state_root)
+    [[ -d $root/candidates ]] || return 1
+    for path in "$root"/candidates/*-"$slug".*; do
+        [[ -d $path && -s $path/inbound.json && -s $path/README.md && ! -e $path/FAILED ]] && return 0
+    done
+    return 1
+}
+
+show_transport_status() {
+    local pairs pair label state slug backend_state='NOT TESTED'
+    pairs=$(runtime_transport_pairs 2>/dev/null) || pairs=''
+    ui_print ''
+    ui_print 'ТРАНСПОРТЫ · runtime и сетевые проверки разделены'
+    if [[ -z $pairs ]]; then
+        ui_print 'Runtime транспорта: NOT TESTED (rw-core config не прочитан или inbound не найден).'
+    else
+        while IFS= read -r pair; do
+            [[ -n $pair ]] || continue
+            label=$(transport_pair_label "$pair")
+            ui_wrap "ACTIVE · $label (найден в runtime-конфигурации; listener и клиентский handshake отдельно не подтверждены)"
+        done <<<"$pairs"
+    fi
+    ui_print ''
+    ui_print '  Транспорт | Схема | Runtime'
+    for pair in 'raw|tls' 'raw|reality' 'xhttp|reality' 'xhttp|tls' 'grpc|tls'; do
+        label=$(transport_pair_label "$pair")
+        slug=$(transport_pair_slug "$pair")
+        if [[ -n $pairs ]] && transport_pair_active "$pairs" "$pair"; then state=ACTIVE
+        elif transport_candidate_prepared "$slug"; then state=PREPARED
+        elif [[ -z $pairs ]]; then state='NOT TESTED'
+        else state=SUPPORTED; fi
+        ui_wrap "$label | $state | Xray schema supported; installed-core validation is separate"
+    done
+    if [[ -n $DOMAIN ]]; then
+        if https_backend_ready; then backend_state=HEALTHY; else backend_state=FAILED; fi
+    fi
+    status_row 'HTTPS target 127.0.0.1:9443' "$backend_state" 'Проверка настоящего HTTPS-ответа сайта; не является проверкой VPN'
+    status_row 'VLESS / пользовательский трафик' 'NOT TESTED' 'Нужна разрешённая клиентская конфигурация и end-to-end запрос'
+    status_row 'Happ iOS / Android' 'NOT TESTED' 'Версия приложения и поддержка режимов не получены'
+    status_row 'Node / Panel dependencies' 'NOT TESTED' 'Требуется проверка Node, Hosts, Squads и пользователей в панели'
+    ui_print ''
+    ui_wrap 'SUPPORTED описывает схему Xray в официальной документации, а не текущую сборку Node или Happ. ACTIVE означает найденный inbound в файлах runtime, а не успешный listener или VPN.'
+}
+
+new_transport_candidate_dir() {
+    local slug=$1 root stamp canonical
+    root=$(transport_state_root)
+    [[ $root == /* && ! -L $root ]] || return 1
+    canonical=$(realpath -m -- "$root") || return 1
+    [[ $canonical == "$root" ]] || return 1
+    [[ ! -e $root || -d $root ]] || return 1
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    command mkdir -p "$root/candidates" || return 1
+    [[ ! -L $root/candidates && -d $root/candidates ]] || return 1
+    command chmod 0700 "$root" "$root/candidates" || return 1
+    command mktemp -d "$root/candidates/${stamp}-${slug}.XXXXXX"
+}
+
+write_transport_manifest() {
+    local path=$1 kind=$2 domain=$3
+    cat >"$path/README.md" <<EOF
+# Подготовленный кандидат транспорта
+
+- Тип: $kind
+- Домен Node: $domain
+- Состояние: PREPARED ONLY
+- Профиль Remnawave создан/назначен: нет
+- Node, Host, Squad или пользователь изменены: нет
+- Xray, Remnanode, Nginx, Docker, firewall или сертификаты изменены: нет
+- Перезапуск сервиса: нет
+- VPN end-to-end: NOT TESTED
+
+inbound.json — только обезличенный фрагмент для ручной проверки. JSON синтаксис проверен, но фрагмент не является полной Config Profile и не прошёл валидацию установленной версии Xray.
+
+Перед активацией в панели сохраните текущий Config Profile, список активных inbound, привязки Node/Host и затронутые Squads. Сохраните все действующие inbound и routing. Новый транспорт требует согласованного Host и отдельной проверки выдаваемого клиентского профиля.
+
+Не применяйте фрагмент напрямую в runtime-контейнере. Если API панели не настроен и не прошёл проверку, дальнейшая активация выполняется вручную в Remnawave после отдельного согласования.
+EOF
+    command chmod 0600 "$path/README.md"
+}
+
+prepare_transport_candidate() {
+    local transport=$1 slug label path mode
+    [[ $EUID -eq 0 || -n $TRANSPORT_STATE_OVERRIDE ]] || { ui_print 'Для записи кандидата нужны права root.'; return 1; }
+    valid_domain "$DOMAIN" || { ui_print 'Сначала задайте корректный домен Node.'; return 1; }
+    slug=$(transport_slug "$transport") || return 2
+    label=$(transport_label "$transport") || return 2
+    path=$(new_transport_candidate_dir "$slug") || { ui_print 'Не удалось создать изолированный каталог кандидата.'; return 1; }
+    command chmod 0700 "$path" || return 1
+    render_transport_inbound "$transport" "$DOMAIN" >"$path/inbound.json" || return 1
+    if ! python3 -m json.tool "$path/inbound.json" >/dev/null; then
+        printf '%s\n' 'inbound JSON validation failed' >"$path/FAILED"
+        command chmod 0600 "$path/FAILED"
+        ui_print 'Сгенерированный фрагмент JSON не прошёл проверку; каталог помечен FAILED.'
+        return 1
+    fi
+    command chmod 0600 "$path/inbound.json" || return 1
+    if [[ $transport != xhttp_reality ]]; then
+        render_transport_client "$transport" "$DOMAIN" >"$path/client-xray.json" || return 1
+        python3 -m json.tool "$path/client-xray.json" >/dev/null || return 1
+        command chmod 0600 "$path/client-xray.json" || return 1
+    fi
+    write_transport_manifest "$path" "$label" "$DOMAIN" || return 1
+    if [[ $transport == xhttp_reality ]]; then
+        for mode in auto stream-one stream-up packet-up; do
+            render_xhttp_client_mode "$DOMAIN" "$mode" >"$path/client-$mode.json" || return 1
+            if ! python3 -m json.tool "$path/client-$mode.json" >/dev/null; then
+                printf '%s\n' "client JSON validation failed: $mode" >"$path/FAILED"
+                command chmod 0600 "$path/FAILED"
+                return 1
+            fi
+            command chmod 0600 "$path/client-$mode.json" || return 1
+        done
+        {
+            printf '%s\n' '# XHTTP mode matrix: client-side Xray JSON, not Happ import'
+            printf '%s\n' 'Test one mode at a time. Server inbound intentionally omits mode and keeps the core default.'
+            printf '%s\n' 'iOS stream-up is a test hypothesis only; no client test was run.'
+        } >"$path/xhttp-client-modes.txt"
+        command chmod 0600 "$path/xhttp-client-modes.txt" || return 1
+    fi
+    ui_print "Кандидат сохранён: $path"
+    ui_wrap 'Создан только новый каталог с обезличенным фрагментом и инструкцией. Настройки активных сервисов и панели не менялись.'
+    ui_wrap 'Для полноценной валидации замените placeholders, соберите полный профиль и проверьте его на изолированном узле с той же версией Xray.'
+}
+
+prepare_xhttp_modes() {
+    local path mode
+    [[ $EUID -eq 0 || -n $TRANSPORT_STATE_OVERRIDE ]] || { ui_print 'Для записи кандидата нужны права root.'; return 1; }
+    valid_domain "$DOMAIN" || { ui_print 'Сначала задайте корректный домен Node.'; return 1; }
+    path=$(new_transport_candidate_dir xhttp-client-modes) || { ui_print 'Не удалось создать изолированный каталог кандидата.'; return 1; }
+    command chmod 0700 "$path" || return 1
+    for mode in auto stream-one stream-up packet-up; do
+        render_xhttp_client_mode "$DOMAIN" "$mode" >"$path/client-$mode.json" || return 1
+        if ! python3 -m json.tool "$path/client-$mode.json" >/dev/null; then
+            printf '%s\n' "client JSON validation failed: $mode" >"$path/FAILED"
+            command chmod 0600 "$path/FAILED"
+            return 1
+        fi
+        command chmod 0600 "$path/client-$mode.json" || return 1
+    done
+    write_transport_manifest "$path" 'XHTTP REALITY client mode matrix' "$DOMAIN" || return 1
+    ui_print "XHTTP-кандидаты сохранены: $path"
+    ui_wrap 'Подготовлены auto, stream-one, stream-up и packet-up. Это клиентские Xray JSON шаблоны; совместимость Happ iOS/Android не проверена.'
+}
+
+show_transport_activation_plan() {
+    local root latest
+    root=$(transport_state_root)
+    latest=$(printf '%s\n' "$root"/candidates/* 2>/dev/null | sort -r | head -n1)
+    ui_print ''
+    ui_print 'ПЕРЕКЛЮЧЕНИЕ · ПЛАН, БЕЗ ИЗМЕНЕНИЙ'
+    ui_wrap "Последний локальный кандидат: ${latest:-не найден}"
+    ui_wrap 'Текущий Config Profile, другие Nodes, inbound, Hosts, Squads и число пользователей из панели не прочитаны: API не настроен. Не переключайте Node до проверки зависимостей.'
+    ui_wrap '1. Экспортируйте текущий профиль и зафиксируйте назначение Node и активные inbound.'
+    ui_wrap '2. Проверьте Hosts, Squads и пользователей, которые получают текущий inbound.'
+    ui_wrap '3. Создайте отдельный профиль. Сохраните действующие inbound и routing; новый фрагмент добавляйте только как кандидат.'
+    ui_wrap '4. Сначала обновите тестовый Host/клиент и проверьте выданный Remnawave профиль.'
+    ui_wrap '5. Переключайте только согласованную canary Node после backup и окна работ.'
+    ui_wrap '6. При сбое верните Node на сохранённый профиль и прежний набор enabled inbounds; восстановите Host только если он менялся.'
+    ui_wrap 'Если текущий inbound уже занимает тот же TCP/443, второй inbound нельзя считать параллельным canary на том же socket. Нужна отдельная тестовая Node или явно согласованный свободный endpoint.'
+    ui_wrap 'Автоматическая активация и rollback через панель не выполняются. Смена единственного inbound на 443 может оборвать подключения.'
+}
+
+show_transport_compatibility() {
+    local image core_version
+    image=$(docker inspect -f '{{.Config.Image}}' remnanode 2>/dev/null) || image='NOT TESTED'
+    core_version=$(docker exec remnanode sh -c 'command -v xray >/dev/null 2>&1 && xray version' 2>/dev/null | head -n1) || core_version=''
+    [[ -n $core_version ]] || core_version='NOT TESTED (binary/version command unavailable)'
+    ui_print ''
+    ui_print 'СОВМЕСТИМОСТЬ · локальные факты и внешние ограничения'
+    status_row 'Remnanode image' "$([[ $image == NOT\ TESTED ]] && printf 'NOT TESTED' || printf 'PASS')" "$image"
+    status_row 'Xray version' "$([[ $core_version == NOT\ TESTED* ]] && printf 'NOT TESTED' || printf 'PASS')" "$core_version"
+    status_row 'XHTTP schema' 'SUPPORTED' 'Официальная Xray схема включает VLESS over XHTTP с TLS и REALITY; installed-core validation is separate'
+    status_row 'gRPC TLS schema' 'SUPPORTED' 'Официальная Xray схема включает gRPC over TLS; HTTP/2 и ALPN h2 проверяются отдельно'
+    status_row 'gRPC REALITY candidate' 'NOT TESTED' 'не подготавливается: нет проверенного сайта/fallback и клиентского сценария'
+    status_row 'Happ iOS / Android' 'NOT TESTED' 'нет подтверждённых версий Happ и разрешённого тестового клиента'
+    status_row 'XHTTP mode / extra в Host' 'NOT TESTED' 'нужна проверка фактически выданного профиля через панель'
+    ui_wrap 'gRPC не является SELFSTEAL с обычным HTTPS fallback: Xray предупреждает, что gRPC не поддерживает fallback. Не включайте его на единственном production 443 без отдельной проверенной reverse-proxy схемы.'
+}
+
+show_transport_history() {
+    local root item found=0
+    root=$(transport_state_root)
+    ui_print ''
+    ui_print 'ИСТОРИЯ ПОДГОТОВЛЕННЫХ КАНДИДАТОВ'
+    if [[ -d $root/candidates ]]; then
+        while IFS= read -r item; do
+            [[ -d $item ]] || continue
+            found=1
+            if [[ -e $item/FAILED ]]; then
+                ui_wrap "FAILED · $(basename "$item")"
+            elif [[ -s $item/README.md && ( -s $item/inbound.json || -s $item/client-auto.json ) ]]; then
+                ui_wrap "PREPARED ONLY · $(basename "$item")"
+            else
+                ui_wrap "INCOMPLETE · $(basename "$item")"
+            fi
+        done < <(printf '%s\n' "$root"/candidates/* | sort -r)
+    fi
+    ((found)) || ui_print 'Кандидатов пока нет.'
+    ui_wrap 'Эта история содержит только экспортированные файлы. Она не подтверждает активный профиль и не может сама откатить панель.'
+}
+
+transport_manager_help() {
+    ui_print ''
+    ui_print 'СПРАВКА · МЕНЕДЖЕР ТРАНСПОРТОВ'
+    ui_wrap '1 Статус — только чтение runtime transport и HTTPS backend. Не запускает handshake и не меняет файлы/сервисы.'
+    ui_wrap '2 Подготовить inbound — после подтверждения создаёт новый каталог кандидата с JSON-фрагментом и README. Не меняет Nginx, Docker, Xray, Remnawave или сертификаты.'
+    ui_wrap '3 XHTTP mode matrix — после подтверждения сохраняет клиентские Xray JSON примеры auto, stream-one, stream-up и packet-up. Не является импортом Happ.'
+    ui_wrap '4 План активации/rollback — только чтение; вручную проверяются зависимости панели и возврат предыдущего профиля.'
+    ui_wrap '5 Совместимость — только чтение; версия Happ и реальные клиентские проверки останутся NOT TESTED без теста.'
+    ui_wrap '6 Шаблоны — только чтение; показывает базовые TLS и REALITY параметры.'
+    ui_wrap '7 История — только чтение; список локальных кандидатов. Они не означают, что профиль активирован.'
+}
+
+transport_manager_menu() {
+    local choice transport
+    while :; do
+        ui_print ''
+        ui_print 'VOID · ТРАНСПОРТЫ'
+        ui_print '[1] Статус транспортов'
+        ui_wrap 'Только чтение: runtime inbound и HTTPS backend; VPN-handshake отдельно NOT TESTED.'
+        ui_print '[2] Подготовить inbound-кандидат'
+        ui_wrap 'Создаёт отдельные локальные JSON/README файлы после подтверждения; активные сервисы не затрагивает.'
+        ui_print '[3] Подготовить XHTTP mode matrix'
+        ui_wrap 'Сохраняет клиентские примеры auto, stream-one, stream-up и packet-up; Happ не меняет.'
+        ui_print '[4] План переключения и rollback'
+        ui_wrap 'Только чтение: зависимости панели не получены, ручной canary и возврат профиля.'
+        ui_print '[5] Совместимость Remnawave / Happ'
+        ui_wrap 'Только чтение; версия ядра и реальные клиентские проверки разделяются.'
+        ui_print '[6] Шаблоны профиля'
+        ui_wrap 'Только чтение: текущие безопасные TLS и REALITY параметры.'
+        ui_print '[7] История кандидатов'
+        ui_wrap 'Только чтение: записи PREPARED, без предположений об активном транспорте.'
+        ui_print '[H] Справка по операциям'
+        ui_print '[0] Назад'
+        printf 'Выберите пункт: ' >&"$(ui_output_fd)"
+        if ! ui_read choice; then return 0; fi
+        case ${choice,,} in
+            1) load_state || true; show_transport_status ;;
+            2)
+                ui_print 'Кандидат: [1] TCP TLS  [2] TCP REALITY  [3] XHTTP REALITY  [4] XHTTP TLS  [5] gRPC TLS  [0] Назад'
+                prompt 'Тип транспорта: ' transport
+                case $transport in
+                    1) transport=tcp_tls ;;
+                    2) transport=tcp_reality ;;
+                    3) transport=xhttp_reality ;;
+                    4) transport=xhttp_tls ;;
+                    5) transport=grpc_tls ;;
+                    0) continue ;;
+                    *) ui_print 'Неизвестный тип транспорта.'; continue ;;
+                esac
+                load_state || ask_value 'Домен этой Node: ' DOMAIN valid_domain
+                ui_wrap "Будет создан только новый каталог кандидата для $(transport_label "$transport"). Профиль, Host, Nginx, Docker, Xray, сертификаты и сервисы не изменятся."
+                if confirm_action 'Сохранить подготовленный шаблон?'; then prepare_transport_candidate "$transport" || warn 'Кандидат не создан.'
+                else ui_print 'Подготовка отменена; файлы не менялись.'; fi
+                ;;
+            3)
+                load_state || ask_value 'Домен этой Node: ' DOMAIN valid_domain
+                ui_wrap 'Будет создан новый каталог с четырьмя XHTTP-клиентскими JSON шаблонами. Panel, Host, Xray и сервисы не меняются.'
+                if confirm_action 'Сохранить XHTTP mode matrix?'; then prepare_xhttp_modes || warn 'XHTTP шаблоны не созданы.'
+                else ui_print 'Подготовка отменена; файлы не менялись.'; fi
+                ;;
+            4) show_transport_activation_plan ;;
+            5) show_transport_compatibility ;;
+            6) load_state || true; show_profile_templates ;;
+            7) show_transport_history ;;
+            h) transport_manager_help ;;
+            0) return 0 ;;
+            *) ui_print 'Неизвестный пункт. Введите 0–7 или H.' ;;
+        esac
+    done
 }
 
 # Return free, remnawave, nginx, or unknown. Xray ownership is confirmed by
@@ -1451,7 +2057,7 @@ self_test() {
     curl() {
         printf 'curl:%s\n' "$1" >>"$MOCK_ACME_PROBE_LOG"
         if [[ $* == *'http://127.0.0.1/remna-301-check?source=installer'* ]]; then
-            printf 'HTTP/1.1 %s\r\nLocation: %s\r\n' "$MOCK_REDIRECT_STATUS" "$MOCK_REDIRECT_LOCATION"
+            printf 'HTTP/1.1 %s\nLocation: %s\n' "$MOCK_REDIRECT_STATUS" "$MOCK_REDIRECT_LOCATION"
             return 0
         fi
         [[ $# == 8 && $1 == --noproxy && $2 == '*' && $3 == -fsS && $4 == --max-time && $5 == 5 && $6 == -H && $7 == "Host: $DOMAIN" && $8 == "http://127.0.0.1/.well-known/acme-challenge/$MOCK_ACME_TOKEN" ]] || return 1
@@ -1489,7 +2095,7 @@ self_test() {
         die 'self-test HTTP E: missing managed Nginx server must fail'
     fi
     DOMAIN=$saved_domain
-    local rendered tls_rendered tmp bad_cert good_cert renew_log
+    local rendered tls_rendered tmp bad_cert good_cert renew_log candidate_path transport mode transport_pairs
     rendered=$(render_nginx node.example.com)
     tls_rendered=$(render_nginx node.example.com 1)
     [[ $rendered == *'listen 127.0.0.1:8080;'* && $rendered == *'listen [::]:80;'* && $rendered != *'listen 127.0.0.1:9443 ssl;'* ]] || die 'self-test Nginx 2: old TLS config shape'
@@ -1503,6 +2109,45 @@ self_test() {
     managed_nginx_9443_listener '127.0.0.1:9443 users:(("nginx",pid=101,fd=3))' "$tls_rendered" || die 'self-test Nginx 5: managed Nginx listener rejected'
     tmp=$(mktemp -d)
     trap 'rm -rf -- "$tmp"' RETURN
+    DOMAIN=node.example.com
+    for transport in tcp_tls tcp_reality xhttp_reality xhttp_tls grpc_tls; do
+        render_transport_inbound "$transport" "$DOMAIN" >"$tmp/$transport.json" || die "self-test transport: failed to render $transport"
+        python3 -m json.tool "$tmp/$transport.json" >/dev/null || die "self-test transport: invalid JSON for $transport"
+    done
+    for transport in tcp_tls tcp_reality xhttp_tls grpc_tls; do
+        render_transport_client "$transport" "$DOMAIN" >"$tmp/client-$transport.json" || die "self-test transport: failed to render client example for $transport"
+        python3 -m json.tool "$tmp/client-$transport.json" >/dev/null || die "self-test transport: invalid client JSON for $transport"
+    done
+    [[ $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["streamSettings"]["network"]+"|"+d["streamSettings"]["security"])' "$tmp/tcp_tls.json") == 'raw|tls' ]] || die 'self-test transport: TCP TLS contract'
+    grep -Fq '127.0.0.1:8080' "$tmp/tcp_tls.json" || die 'self-test transport: TCP TLS HTTP fallback missing'
+    for transport in tcp_reality xhttp_reality; do
+        grep -Fq '127.0.0.1:9443' "$tmp/$transport.json" || die "self-test transport: REALITY target missing for $transport"
+        grep -Fq '"xver": 0' "$tmp/$transport.json" || die "self-test transport: xver missing for $transport"
+        grep -Fq '__REUSE_EXISTING_NODE_PRIVATE_KEY__' "$tmp/$transport.json" || die "self-test transport: REALITY key placeholder missing for $transport"
+    done
+    if grep -Fq '"mode"' "$tmp/xhttp_reality.json" || grep -Fq 'Vision' "$tmp/xhttp_reality.json"; then
+        die 'self-test transport: server XHTTP must not be restricted to one client mode or use Vision'
+    fi
+    for mode in auto stream-one stream-up packet-up; do
+        render_xhttp_client_mode "$DOMAIN" "$mode" >"$tmp/client-$mode.json" || die "self-test XHTTP: could not render client mode $mode"
+        python3 -m json.tool "$tmp/client-$mode.json" >/dev/null || die "self-test XHTTP: invalid client JSON for $mode"
+        grep -Fq "\"mode\": \"$mode\"" "$tmp/client-$mode.json" || die "self-test XHTTP: client mode mismatch for $mode"
+        grep -Fq '__SET_PUBLIC_KEY_FROM_PANEL__' "$tmp/client-$mode.json" || die "self-test XHTTP: public key placeholder missing for $mode"
+    done
+    transport_pairs=$(printf '%s' '{"inbounds":[{"streamSettings":{"network":"xhttp","security":"reality"}},{"streamSettings":{"security":"tls"}}]}' | extract_transport_pairs) || die 'self-test transport parser: failed'
+    [[ $transport_pairs == $'raw|tls\nxhttp|reality' ]] || die 'self-test transport parser: network/security pair detection'
+    TRANSPORT_STATE_OVERRIDE=$tmp/transport-state
+    UI_OUTPUT_FD=1
+    prepare_transport_candidate xhttp_reality >"$tmp/transport-candidate.out" || die 'self-test transport: candidate preparation failed'
+    candidate_path=$(find "$tmp/transport-state/candidates" -mindepth 1 -maxdepth 1 -type d -print -quit)
+    [[ -n $candidate_path && -f $candidate_path/inbound.json && -f $candidate_path/README.md ]] || die 'self-test transport: candidate bundle is incomplete'
+    for mode in auto stream-one stream-up packet-up; do [[ -f $candidate_path/client-$mode.json ]] || die "self-test transport: client mode file missing: $mode"; done
+    [[ $(stat -c '%a' "$candidate_path") == 700 && $(stat -c '%a' "$candidate_path/inbound.json") == 600 ]] || die 'self-test transport: candidate permissions are not private'
+    grep -Fq 'PREPARED ONLY' "$candidate_path/README.md" || die 'self-test transport: candidate incorrectly claims activation'
+    command ln -s "$tmp/transport-state" "$tmp/transport-state-link" || die 'self-test transport: could not prepare symlink guard test'
+    TRANSPORT_STATE_OVERRIDE=$tmp/transport-state-link
+    if new_transport_candidate_dir tcp-tls >/dev/null 2>&1; then die 'self-test transport: symlinked candidate root was accepted'; fi
+    TRANSPORT_STATE_OVERRIDE=''
     bad_cert=$tmp/bad-san.pem; good_cert=$tmp/good-san.pem
     openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tmp/bad.key" -out "$bad_cert" -days 2 -subj '/CN=other.example.com' -addext 'subjectAltName=DNS:other.example.com' >/dev/null 2>&1 || die 'self-test Cert 5: could not create mismatched test certificate'
     openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tmp/good.key" -out "$good_cert" -days 2 -subj '/CN=node.example.com' -addext 'subjectAltName=DNS:node.example.com' >/dev/null 2>&1 || die 'self-test Cert 6: could not create matching test certificate'
@@ -1513,9 +2158,9 @@ self_test() {
     certificate_has_domain_san() { return 0; }
     # shellcheck disable=SC2329
     curl() { printf '%s\n' "$MOCK_TLS_HEADERS"; }
-    MOCK_TLS_HEADERS=$'HTTP/1.1 200 OK\r\nStrict-Transport-Security: max-age=300\r\n'
+    MOCK_TLS_HEADERS=$'HTTP/1.1 200 OK\nStrict-Transport-Security: max-age=300\n'
     https_backend_ready /dev/null || die 'self-test HTTPS A: valid HTTPS/HSTS response rejected'
-    MOCK_TLS_HEADERS=$'HTTP/1.1 200 OK\r\n'
+    MOCK_TLS_HEADERS=$'HTTP/1.1 200 OK\n'
     if https_backend_ready /dev/null; then die 'self-test HTTPS A: missing HSTS header accepted'; fi
 
     (
@@ -1774,7 +2419,7 @@ YAML
     grep -Fq 'node_certificate_usage' "$tmp/remna-cert-renew" || die 'self-test: renewal must include the Xray/Hysteria2 certificate-use check'
     grep -Fq 'http_redirect_ready' "$tmp/remna-cert-renew" || die 'self-test: renewal must verify HTTP 301'
 
-    local ui_input_path=$tmp/menu.input ui_output_path=$tmp/menu.output menu_expected readonly_log readonly_hash readonly_source
+    local ui_input_path=$tmp/menu.input ui_output_path=$tmp/menu.output menu_expected readonly_log readonly_hash readonly_source candidate_hash candidate_count_before
     run_menu_case() {
         local input=$1 expected=$2 input_fd output_fd
         printf '%s' "$input" >"$ui_input_path"
@@ -1789,6 +2434,7 @@ YAML
         exec {output_fd}>&-
     }
     for menu_expected in 1 2 3 4 5; do run_menu_case "$menu_expected"$'\n' "$menu_expected"; done
+    run_menu_case $'T\n' 6
     MENU_TEST_COLUMNS=40
     run_menu_case $'x\n\n5\n' 5
     grep -Fq 'Неизвестный пункт' "$ui_output_path" || die 'self-test menu: invalid input was not explained'
@@ -1808,7 +2454,36 @@ if bad:
 PY
     MENU_TEST_COLUMNS=80
     run_menu_case $'\n5\n' 5
-    grep -Fq 'Введите 1–5 или H' "$ui_output_path" || die 'self-test menu: empty input did not reprompt'
+    grep -Fq 'Введите 1–5, T или H' "$ui_output_path" || die 'self-test menu: empty input did not reprompt'
+
+    run_transport_menu_case() {
+        local input=$1 input_fd output_fd
+        printf '%s' "$input" >"$ui_input_path"
+        : >"$ui_output_path"
+        exec {input_fd}<"$ui_input_path"
+        exec {output_fd}>"$ui_output_path"
+        UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd COLUMNS=${MENU_TEST_COLUMNS:-80}
+        transport_manager_menu || die 'self-test transport menu: returned failure'
+        exec {input_fd}<&-
+        exec {output_fd}>&-
+    }
+    MENU_TEST_COLUMNS=40
+    run_transport_menu_case $'x\n\n0\n'
+    grep -Fq 'Неизвестный пункт' "$ui_output_path" || die 'self-test transport menu: invalid/empty input did not reprompt'
+    run_transport_menu_case $'h\n0\n'
+    grep -Fq 'СПРАВКА · МЕНЕДЖЕР ТРАНСПОРТОВ' "$ui_output_path" || die 'self-test transport menu: help did not open'
+    python3 - "$ui_output_path" 40 <<'PY' || die 'self-test transport menu: narrow-terminal layout exceeds width'
+import sys, unicodedata
+path, limit = sys.argv[1], int(sys.argv[2])
+def width(text):
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+with open(path, encoding="utf-8") as stream:
+    bad = [(i, width(line.rstrip("\n"))) for i, line in enumerate(stream, 1) if width(line.rstrip("\n")) > limit]
+if bad:
+    print(bad, file=sys.stderr)
+    raise SystemExit(1)
+PY
+    MENU_TEST_COLUMNS=80
 
     run_menu_case $'h\n\n5\n' 5
     UI_OUTPUT_FD=1
@@ -1860,7 +2535,7 @@ PY
     # shellcheck disable=SC2329
     http_redirect_ready() { return 0; }
     # shellcheck disable=SC2329
-    https_backend_headers() { printf 'HTTP/1.1 200 OK\r\nStrict-Transport-Security: max-age=300\r\n'; }
+    https_backend_headers() { printf 'HTTP/1.1 200 OK\nStrict-Transport-Security: max-age=300\n'; }
     # shellcheck disable=SC2329
     https_protocol_ready() { return 0; }
     # shellcheck disable=SC2329
@@ -1885,11 +2560,13 @@ PY
         case "$*" in
             "inspect -f {{.State.Status}} remnanode") printf 'running\n' ;;
             "inspect -f {{.State.Running}} remnanode") printf 'true\n' ;;
+            "inspect -f {{.Config.Image}} remnanode") printf 'remnawave/node:test\n' ;;
             "inspect -f {{json .Mounts}} remnanode")
                 if ((MOCK_EMPTY_MOUNT)); then printf '[]\n'
                 else printf '[{"Source":"/opt/certbot/certs","Destination":"/etc/letsencrypt","RW":false}]\n'; fi ;;
+            'exec remnanode sh -c command -v xray'*) return 1 ;;
             'exec remnanode test -r '*) return 0 ;;
-            'exec remnanode sh -c '*) printf '{"inbounds":[{"streamSettings":{"security":"reality"}}]}\n' ;;
+            'exec remnanode sh -c '*) printf '{"inbounds":[{"streamSettings":{"network":"raw","security":"reality"}}]}\n' ;;
             *) printf 'docker %s\n' "$*" >>"$READONLY_ACTION_LOG"; return 1 ;;
         esac
     }
@@ -1917,6 +2594,66 @@ PY
         printf 'read-only sentinel\n' >"$readonly_source"
     fi
     readonly_hash=$(sha256sum "$readonly_source" | awk '{print $1}')
+    TRANSPORT_STATE_OVERRIDE=$tmp/transport-state
+    runtime_transport_pairs() { printf 'raw|reality\nxhttp|reality\n'; }
+    https_backend_ready() { return 0; }
+    : >"$ui_input_path"
+    printf '1\n4\n5\n6\n7\n0\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd COLUMNS=40
+    candidate_hash=$(sha256sum "$candidate_path/inbound.json" "$candidate_path/README.md" | sha256sum | awk '{print $1}')
+    transport_manager_menu || die 'self-test transport menu: read-only path failed'
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    grep -Fq 'VLESS XHTTP + REALITY' "$ui_output_path" || die 'self-test transport menu: runtime XHTTP status missing'
+    grep -Fq 'ПЕРЕКЛЮЧЕНИЕ · ПЛАН' "$ui_output_path" || die 'self-test transport menu: activation plan missing'
+    grep -Fq 'СОВМЕСТИМОСТЬ' "$ui_output_path" || die 'self-test transport menu: compatibility screen missing'
+    grep -Fq 'Шаблон TLS' "$ui_output_path" || die 'self-test transport menu: profile templates missing'
+    grep -Fq 'ИСТОРИЯ ПОДГОТОВЛЕННЫХ КАНДИДАТОВ' "$ui_output_path" || die 'self-test transport menu: history missing'
+    [[ $(sha256sum "$candidate_path/inbound.json" "$candidate_path/README.md" | sha256sum | awk '{print $1}') == "$candidate_hash" ]] || die 'self-test transport menu: read-only screens modified candidate files'
+    [[ ! -s $READONLY_ACTION_LOG ]] || die "self-test transport menu: read-only actions invoked mutations: $(cat "$READONLY_ACTION_LOG")"
+
+    candidate_count_before=$(find "$TRANSPORT_STATE_OVERRIDE/candidates" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    printf '2\n1\n\n0\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    transport_manager_menu || die 'self-test transport menu: cancellation flow failed'
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    grep -Fq 'Подготовка отменена; файлы не менялись.' "$ui_output_path" || die 'self-test transport menu: empty confirmation did not cancel'
+    [[ $(find "$TRANSPORT_STATE_OVERRIDE/candidates" -mindepth 1 -maxdepth 1 -type d | wc -l) == "$candidate_count_before" ]] || die 'self-test transport menu: cancelled candidate changed files'
+    printf '3\n\n0\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    transport_manager_menu || die 'self-test transport menu: XHTTP cancellation flow failed'
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    grep -Fq 'Подготовка отменена; файлы не менялись.' "$ui_output_path" || die 'self-test transport menu: XHTTP empty confirmation did not cancel'
+    [[ $(find "$TRANSPORT_STATE_OVERRIDE/candidates" -mindepth 1 -maxdepth 1 -type d | wc -l) == "$candidate_count_before" ]] || die 'self-test transport menu: cancelled XHTTP preparation changed files'
+    printf '2\n3\nДА\n0\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    transport_manager_menu || die 'self-test transport menu: confirmed candidate flow failed'
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    grep -Fq 'Кандидат сохранён:' "$ui_output_path" || die 'self-test transport menu: explicit confirmation did not create candidate'
+    [[ $(find "$TRANSPORT_STATE_OVERRIDE/candidates" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq $((candidate_count_before + 1)) ]] || die 'self-test transport menu: confirmed inbound candidate missing'
+    printf '3\nДА\n0\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    transport_manager_menu || die 'self-test transport menu: confirmed XHTTP mode flow failed'
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    grep -Fq 'XHTTP-кандидаты сохранены:' "$ui_output_path" || die 'self-test transport menu: explicit XHTTP confirmation did not create mode matrix'
+    [[ $(find "$TRANSPORT_STATE_OVERRIDE/candidates" -mindepth 1 -maxdepth 1 -type d | wc -l) -eq $((candidate_count_before + 2)) ]] || die 'self-test transport menu: XHTTP mode candidate missing'
+    [[ ! -s $READONLY_ACTION_LOG ]] || die 'self-test transport menu: cancelled preparation ran a mutating command'
+
+    TRANSPORT_STATE_OVERRIDE=''
     : >"$ui_output_path"
     exec {output_fd}>"$ui_output_path"
     UI_OUTPUT_FD=$output_fd
@@ -1979,6 +2716,7 @@ menu
 case $MODE in
     5) exit 0 ;;
     3|4) run_readonly_action "$MODE"; exit 0 ;;
+    6) transport_manager_menu; exit 0 ;;
     1|2)
         confirm_menu_action "$MODE" || cancel_operation
         ;;

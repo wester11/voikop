@@ -1,0 +1,11 @@
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": { "vnext": [{ "address": "__NODE_DOMAIN__", "port": 443, "users": [{ "id": "__SET_USER_UUID__", "encryption": "none" }] }] },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": { "serverName": "__NODE_DOMAIN__", "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__", "alpn": ["h2", "http/1.1"] },
+    "xhttpSettings": { "path": "/__SET_SHARED_XHTTP_PATH__", "mode": "auto" }
+  }
+}

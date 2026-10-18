@@ -1,0 +1,22 @@
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "127.0.0.1",
+  "port": 8443,
+  "protocol": "vless",
+  "settings": { "clients": [], "decryption": "none" },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "__NODE_DOMAIN__",
+      "minVersion": "1.2",
+      "maxVersion": "1.3",
+      "alpn": ["h2", "http/1.1"],
+      "certificates": [{
+        "certificateFile": "/etc/letsencrypt/live/current/fullchain.pem",
+        "keyFile": "/etc/letsencrypt/live/current/privkey.pem"
+      }]
+    },
+    "xhttpSettings": { "path": "/__SET_SHARED_XHTTP_PATH__" }
+  }
+}

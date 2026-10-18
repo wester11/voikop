@@ -1,0 +1,18 @@
+{
+  "tag": "__SET_UNIQUE_INBOUND_TAG__",
+  "listen": "0.0.0.0",
+  "port": 443,
+  "protocol": "vless",
+  "settings": { "clients": [], "decryption": "none" },
+  "streamSettings": {
+    "network": "raw",
+    "security": "reality",
+    "realitySettings": {
+      "target": "127.0.0.1:9443",
+      "xver": 0,
+      "serverNames": ["__NODE_DOMAIN__"],
+      "privateKey": "__REUSE_EXISTING_NODE_PRIVATE_KEY__",
+      "shortIds": ["__REUSE_EXISTING_NODE_SHORT_ID__"]
+    }
+  }
+}

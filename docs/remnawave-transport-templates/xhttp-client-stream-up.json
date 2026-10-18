@@ -1,0 +1,26 @@
+{
+  "tag": "__SET_OUTBOUND_TAG__",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [{
+      "address": "__NODE_DOMAIN__",
+      "port": 443,
+      "users": [{ "id": "__SET_USER_UUID__", "encryption": "none" }]
+    }]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "reality",
+    "realitySettings": {
+      "serverName": "__NODE_DOMAIN__",
+      "fingerprint": "__SELECT_SUPPORTED_CLIENT_FINGERPRINT__",
+      "publicKey": "__SET_PUBLIC_KEY_FROM_PANEL__",
+      "shortId": "__SET_EXISTING_SHORT_ID__",
+      "spiderX": "/"
+    },
+    "xhttpSettings": {
+      "path": "/__SET_SHARED_XHTTP_PATH__",
+      "mode": "stream-up"
+    }
+  }
+}
