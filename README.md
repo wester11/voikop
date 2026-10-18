@@ -76,7 +76,7 @@ LAN clients.
 
 | Path | Status | Meaning |
 | --- | --- | --- |
-| `lists/all-services.domains.txt` | Master list | Deduplicated union of the previous Full list and every catalogued service domain. Broad candidate list; not automatically deployed. |
+| `lists/all-services.domains.txt` | Master list | Deduplicated union of the previous Full list and catalogued service domains opted into the aggregate. Broad candidate list; not automatically deployed. |
 | `lists/catalog/` | Individual lists | One list per service/game, plus service-scoped published network ranges. |
 | `lists/profiles/` | Ready-made groups | AI and game aggregates for routing by category; not enabled automatically. |
 

@@ -68,6 +68,10 @@ The existing catalog, compiler and public list paths are unchanged.
 Run `python validate_catalog.py` before any future integration. It checks
 domain syntax, duplicates within lists, overlap across catalog service lists,
 and that the AI and games profiles match the union of their service files.
+Profiles are included in `lists/all-services.domains.txt` by default; a
+game-profile registry entry may set `include_in_all_services` to `false` when
+its broad platform traffic should remain opt-in. Steam is currently excluded;
+Xbox remains in the aggregate.
 
 ## Game-profile states
 

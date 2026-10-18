@@ -50,6 +50,42 @@ def main() -> int:
     if not files:
         errors.append("no catalog domain lists found")
 
+    profile_file = ROOT / "games" / "profiles.json"
+    try:
+        profiles = json.loads(profile_file.read_text(encoding="utf-8"))["profiles"]
+        if not isinstance(profiles, list):
+            raise TypeError("profiles must be a list")
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        errors.append(f"games/profiles.json: invalid registry: {exc}")
+        profiles = []
+
+    aggregate_excluded_files: set[Path] = set()
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        profile_id = profile.get("id", "<missing-id>")
+        include = profile.get("include_in_all_services", True)
+        if not isinstance(include, bool):
+            errors.append(
+                f"games/profiles.json: {profile_id} include_in_all_services must be boolean"
+            )
+            continue
+        if include:
+            continue
+        domain_file = profile.get("domains")
+        if not isinstance(domain_file, str):
+            errors.append(
+                f"games/profiles.json: {profile_id} excluded from all-services without a domain file"
+            )
+            continue
+        path = ROOT / "games" / domain_file
+        if path not in files:
+            errors.append(
+                f"games/profiles.json: {profile_id} excluded domain file is missing: {domain_file!r}"
+            )
+            continue
+        aggregate_excluded_files.add(path)
+
     all_services_values = entries(ALL_SERVICES)
     if len(all_services_values) != len(set(all_services_values)):
         errors.append("all-services.domains.txt: duplicate domain")
@@ -58,11 +94,20 @@ def main() -> int:
             errors.append(f"all-services.domains.txt: invalid domain {value!r}")
     all_services_set = set(all_services_values)
     for path in files:
+        if path in aggregate_excluded_files:
+            continue
         missing = sorted(set(entries(path)) - all_services_set)
         if missing:
             errors.append(
                 f"all-services.domains.txt: missing {path.relative_to(ROOT)} entries: "
                 + ", ".join(missing)
+            )
+    for path in sorted(aggregate_excluded_files):
+        included = sorted(set(entries(path)) & all_services_set)
+        if included:
+            errors.append(
+                f"all-services.domains.txt: excluded {path.relative_to(ROOT)} entries present: "
+                + ", ".join(included)
             )
     for path in files:
         values = entries(path)
@@ -109,13 +154,6 @@ def main() -> int:
             if value in seen:
                 errors.append(f"profiles/{path.name}: duplicate {value}")
             seen.add(value)
-
-    profile_file = ROOT / "games" / "profiles.json"
-    try:
-        profiles = json.loads(profile_file.read_text(encoding="utf-8"))["profiles"]
-    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        errors.append(f"games/profiles.json: invalid registry: {exc}")
-        profiles = []
 
     ids: set[str] = set()
     for profile in profiles:
@@ -215,8 +253,8 @@ def main() -> int:
         print("\n".join(f"- {error}" for error in errors))
         return 1
     print(
-        f"Lists valid: {len(all_services_values)} all-services domains include "
-        f"{len(files)} individual lists; {len(cidr_files)} CIDR sets checked; "
+        f"Lists valid: {len(all_services_values)} all-services domains; "
+        f"{len(files)} individual catalog lists; {len(cidr_files)} CIDR sets checked; "
         f"AI has {len(ai_all_entries)} endpoints and games-all has {len(games_all_entries)}."
     )
     return 0
