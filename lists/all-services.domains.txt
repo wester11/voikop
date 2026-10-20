@@ -263,6 +263,7 @@ firesidegatherings.com
 fortnite-vod.akamaized.net
 fortnite.com
 forwarder.workos.com
+frontend-apps-multi-region.workos.com
 fragment.com
 ftcdn.net
 gaijin.net
@@ -827,6 +828,7 @@ whatsapp.com
 whatsapp.net
 whispersystems.org
 wide-youtube.l.google.com
+workos.imgix.net
 worldofplanes.com
 worldoftanks.com
 worldoftanks.eu

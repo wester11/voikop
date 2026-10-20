@@ -1,6 +1,7 @@
 # ChatGPT, OpenAI API and reviewed exact delivery endpoints.
 # ChatGPT web/mobile connectivity dependencies, from OpenAI's published
 # network requirements: https://help.openai.com/en/articles/9247338
+# Rechecked against the current OpenAI recommendations on 2026-10-20.
 chat.com
 chatgpt.com
 chatgpt.livekit.cloud
@@ -9,6 +10,7 @@ cdn.workos.com
 challenges.cloudflare.com
 ct.sendgrid.net
 forwarder.workos.com
+frontend-apps-multi-region.workos.com
 host.livekit.cloud
 humb.apple.com
 images.workoscdn.com
@@ -32,3 +34,4 @@ rum.browser-intake-datadoghq.com
 setup.workos.com
 sora.com
 turn.livekit.cloud
+workos.imgix.net

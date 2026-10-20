@@ -58,6 +58,7 @@ elevenlabs.com
 elevenlabs.io
 firebaseinstallations.googleapis.com
 forwarder.workos.com
+frontend-apps-multi-region.workos.com
 geller-pa.googleapis.com
 gemini.google
 gemini.google.com
@@ -149,4 +150,5 @@ turn.livekit.cloud
 v0.app
 v0.dev
 webchannel-alkalimakersuite-pa.clients6.google.com
+workos.imgix.net
 x.ai
