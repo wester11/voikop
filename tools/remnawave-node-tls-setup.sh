@@ -11,7 +11,7 @@ readonly RENEW_SERVICE=/etc/systemd/system/remna-cert-renew.service
 readonly RENEW_TIMER=/etc/systemd/system/remna-cert-renew.timer
 readonly STATE_FILE=/etc/remna-node-bootstrap.conf
 readonly CERT_MOUNT=/opt/certbot/certs:/etc/letsencrypt:ro
-DOMAIN='' EMAIL='' MODE='' TTY_FD='' UI_INPUT_FD='' UI_OUTPUT_FD='' BACKUP_DIR='' CANCELLED=0 NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 CERT_LINK_CHANGED=0 CERTBOT_COMPOSE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0
+DOMAIN='' EMAIL='' MODE='' TRANSPORT_MODE='' TTY_FD='' UI_INPUT_FD='' UI_OUTPUT_FD='' BACKUP_DIR='' CANCELLED=0 NGINX_CHANGED=0 NGINX_RELOADED=0 CERTIFICATE_CHANGED=0 CERT_LINK_CHANGED=0 CERTBOT_COMPOSE_CHANGED=0 COMPOSE_CHANGED=0 RENEWAL_CHANGED=0 RENEWAL_WAS_ACTIVE=0 RENEWAL_WAS_ENABLED=0 NGINX_WAS_ACTIVE=0 ACME_CHECK_PASSED=0 STATE_CHANGED=0
 WEB_ROOT=/var/www/remna-node-site
 
 say() { printf '%s\n' "$*"; }
@@ -70,6 +70,117 @@ valid_domain() {
 }
 valid_email() { [[ $1 =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]]; }
 
+valid_transport_mode() {
+    case $1 in
+        tcp_tls|tcp_reality|grpc_tls|grpc_reality|xhttp_tls|xhttp_reality) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+transport_mode_method() {
+    case $1 in
+        tcp_*) printf 'raw\n' ;;
+        grpc_*) printf 'grpc\n' ;;
+        xhttp_*) printf 'xhttp\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+transport_mode_security() {
+    case $1 in
+        *_tls) printf 'tls\n' ;;
+        *_reality) printf 'reality\n' ;;
+        *) printf 'unknown\n' ;;
+    esac
+}
+
+transport_mode_label() {
+    case $1 in
+        tcp_tls) printf 'TCP / TLS (RAW)\n' ;;
+        tcp_reality) printf 'TCP / REALITY (RAW)\n' ;;
+        grpc_tls) printf 'gRPC / TLS\n' ;;
+        grpc_reality) printf 'gRPC / REALITY\n' ;;
+        xhttp_tls) printf 'XHTTP / TLS\n' ;;
+        xhttp_reality) printf 'XHTTP / REALITY\n' ;;
+        unknown|'') printf 'НЕ ОПРЕДЕЛЁН\n' ;;
+        *) printf 'НЕСКОЛЬКО INBOUND\n' ;;
+    esac
+}
+
+transport_mode_uses_node_certificate() {
+    [[ $(transport_mode_security "$1") == tls ]]
+}
+
+node_certificate_mount_required() {
+    local selected_mode=$1 active_modes=$2 usage=$3
+    if valid_transport_mode "$selected_mode" && transport_mode_uses_node_certificate "$selected_mode"; then return 0; fi
+    active_modes_have_security tls "$active_modes" && return 0
+    [[ $usage == USED ]]
+}
+
+active_modes_have_security() {
+    local wanted=$1 mode
+    local -a active_modes=()
+    IFS=',' read -r -a active_modes <<<"${2:-}"
+    for mode in "${active_modes[@]}"; do
+        [[ $(transport_mode_security "$mode") == "$wanted" ]] && return 0
+    done
+    return 1
+}
+
+format_transport_modes() {
+    local modes=$1 mode label result=''
+    [[ $modes == unknown || -z $modes ]] && { printf 'не определён\n'; return 0; }
+    local -a active_modes=()
+    IFS=',' read -r -a active_modes <<<"$modes"
+    for mode in "${active_modes[@]}"; do
+        label=$(transport_mode_label "$mode")
+        result+="${result:+, }$label"
+    done
+    printf '%s\n' "$result"
+}
+
+transport_modes_from_config() {
+    python3 -c 'exec("""import json,sys
+s=sys.stdin.read()
+decoder=json.JSONDecoder()
+modes=set()
+def walk(value):
+    if isinstance(value,dict):
+        inbounds=value.get("inbounds",[])
+        if isinstance(inbounds,list):
+            for inbound in inbounds:
+                if not isinstance(inbound,dict) or str(inbound.get("protocol","")).lower() != "vless":
+                    continue
+                stream=inbound.get("streamSettings",{})
+                if not isinstance(stream,dict):
+                    continue
+                method=str(stream.get("method") or stream.get("network") or inbound.get("network") or "raw").lower()
+                method={"tcp":"raw"}.get(method,method)
+                security=str(stream.get("security","")).lower()
+                if method in ("raw","grpc","xhttp") and security in ("tls","reality"):
+                    modes.add(("tcp" if method == "raw" else method)+"_"+security)
+        for child in value.values():
+            walk(child)
+    elif isinstance(value,list):
+        for child in value:
+            walk(child)
+i=0
+while i < len(s):
+    while i < len(s) and s[i].isspace():
+        i += 1
+    if i >= len(s):
+        break
+    try:
+        value,end=decoder.raw_decode(s,i)
+    except json.JSONDecodeError:
+        i += 1
+        continue
+    walk(value)
+    i=end
+print(",".join(sorted(modes)) if modes else "unknown")""")'
+}
+
 normalize_terminal_input() {
     local value=$1 out=$2
     value=${value//$'\e[200~'/}
@@ -98,6 +209,70 @@ ask_value() {
         say 'Некорректное значение. Повторите ввод.' >&"$fd"
     done
 }
+
+ask_transport_mode() {
+    local detected previous choice default_mode='' chosen_label detected_label fd
+    detected=$(detect_active_mode)
+    previous=$TRANSPORT_MODE
+    if valid_transport_mode "$detected"; then
+        default_mode=$detected
+    elif [[ $detected == unknown ]] && valid_transport_mode "$previous"; then
+        default_mode=$previous
+    fi
+    fd=$(ui_output_fd)
+    ui_print ''
+    ui_print 'ВЫБОР ТРАНСПОРТА · подготовка шаблона и локальных зависимостей'
+    detected_label=$(format_transport_modes "$detected")
+    ui_wrap "Активный VLESS transport в runtime: $detected_label"
+    ui_wrap 'Выбор не меняет Config Profile, Node, Hosts, пользователей или подписки в Remnawave. Для фактического переключения нужно отдельно изменить/назначить профиль в панели.'
+    ui_print '  [1] TCP / TLS (RAW)'
+    ui_print '      Сертификат внутри Node; поддерживается VLESS fallback на сайт 127.0.0.1:8080.'
+    ui_print '  [2] TCP / REALITY (RAW)'
+    ui_print '      REALITY target 127.0.0.1:9443; TLS-сертификат остаётся в Nginx.'
+    ui_print '  [3] gRPC / TLS'
+    ui_print '      Сертификат внутри Node; нужен совместимый serviceName и HTTP/2 ALPN h2.'
+    ui_print '  [4] gRPC / REALITY'
+    ui_print '      REALITY target 127.0.0.1:9443; gRPC не использует VLESS fallback.'
+    ui_print '  [5] XHTTP / TLS'
+    ui_print '      Сертификат внутри Node; режим и path должны совпасть с клиентом.'
+    ui_print '  [6] XHTTP / REALITY'
+    ui_print '      REALITY target 127.0.0.1:9443; режим и path должны совпасть с клиентом.'
+    if [[ -n $default_mode ]]; then
+        ui_wrap "Enter сохраняет режим $(transport_mode_label "$default_mode"). Введите 1–6 для подготовки другого режима или 0 для отмены."
+    else
+        ui_wrap 'Активный режим не определён однозначно. Выберите 1–6; 0 отменяет операцию.'
+    fi
+    while :; do
+        printf '  Режим [1–6]: ' >&"$fd"
+        ui_read choice || choice=''
+        if [[ -z $choice && -n $default_mode ]]; then
+            TRANSPORT_MODE=$default_mode
+            break
+        fi
+        case $choice in
+            1) TRANSPORT_MODE=tcp_tls; break ;;
+            2) TRANSPORT_MODE=tcp_reality; break ;;
+            3) TRANSPORT_MODE=grpc_tls; break ;;
+            4) TRANSPORT_MODE=grpc_reality; break ;;
+            5) TRANSPORT_MODE=xhttp_tls; break ;;
+            6) TRANSPORT_MODE=xhttp_reality; break ;;
+            0) cancel_operation ;;
+            *) ui_print 'Введите число от 1 до 6; пустой ввод сохраняет показанный режим, если он определён.' ;;
+        esac
+    done
+    chosen_label=$(transport_mode_label "$TRANSPORT_MODE")
+    ui_wrap "Выбрано: $chosen_label. Это целевой шаблон; активный профиль в панели останется без изменений."
+    case $TRANSPORT_MODE in
+        grpc_tls|xhttp_tls)
+            ui_wrap 'ВАЖНО: для этого режима Xray не отдаёт обычный сайт через VLESS fallback. Текущий HTTP 301 ведёт на публичный 443, где сайт может не открыться. Не активируйте профиль, пока отдельный HTTPS frontend не настроен и не проверен.'
+            ;;
+    esac
+    if active_modes_have_security reality "$TRANSPORT_MODE"; then
+        ui_wrap 'Для REALITY сертификат не монтируется в Remnanode только ради этого inbound; Nginx backend на 9443 остаётся целью fallback.'
+    else
+        ui_wrap 'Для TLS Xray понадобится сертификат в контейнере. Если volume отсутствует, установщик отдельно предупредит о возможном пересоздании Remnanode и запросит подтверждение.'
+    fi
+}
 backup_file() {
     local path=$1 name=${1#/}
     name=${name//\//__}
@@ -114,7 +289,7 @@ rollback() {
     # Optional root is used only by --self-test to exercise rollback in a temp tree.
     local test_root=${1:-} nginx_file=$NGINX_FILE node_compose=$NODE_COMPOSE node_dir=$NODE_DIR
     local certbot_compose=$CERTBOT_DIR/docker-compose.yml current_link=$CERTS_DIR/live/current
-    local renew_script=$RENEW_SCRIPT renew_service=$RENEW_SERVICE renew_timer=$RENEW_TIMER
+    local renew_script=$RENEW_SCRIPT renew_service=$RENEW_SERVICE renew_timer=$RENEW_TIMER state_file=$STATE_FILE
     if [[ -n $test_root ]]; then
         test_root=${test_root%/}
         nginx_file=$test_root/etc/nginx/conf.d/remna-node-tls-setup.conf
@@ -125,6 +300,7 @@ rollback() {
         renew_script=$test_root/usr/local/sbin/remna-cert-renew
         renew_service=$test_root/etc/systemd/system/remna-cert-renew.service
         renew_timer=$test_root/etc/systemd/system/remna-cert-renew.timer
+        state_file=$test_root/etc/remna-node-bootstrap.conf
     fi
     if ((NGINX_CHANGED)); then
         restore_file "$nginx_file" || warn 'Could not restore Nginx config.'
@@ -156,6 +332,7 @@ rollback() {
             else systemctl disable remna-cert-renew.timer >/dev/null 2>&1 || true; fi
         fi
     fi
+    if ((STATE_CHANGED)); then restore_file "$state_file" || warn 'Could not restore bootstrap state.'; fi
 }
 on_exit() {
     local status=$?
@@ -465,8 +642,8 @@ menu() {
         ui_wrap 'Принудительный выпуск сертификата; возможны reload Nginx и restart Remnanode с разрывом VPN.'
         ui_print '[3] Показать статус TLS / Selfsteal'
         ui_wrap 'Только чтение: проверки без правки файлов и без перезапуска сервисов.'
-        ui_print '[4] Шаблоны профилей Remnawave'
-        ui_wrap 'Только чтение: примеры настроек, без изменений на сервере.'
+        ui_print '[4] Транспорты и шаблоны профилей'
+        ui_wrap 'Только чтение: совместимость шести режимов и требования к Config Profile; без изменений на сервере.'
         ui_print '[H] Подробная справка'
         ui_wrap 'Только чтение: действия, файлы, риски и откат.'
         ui_print '[5] Выход'
@@ -488,13 +665,13 @@ show_detailed_help() {
     ui_print ''
     ui_print 'ПОДРОБНАЯ СПРАВКА · только чтение'
     ui_print ''
-    ui_wrap '1. Проверить и исправить. Когда использовать: первичная настройка или восстановление. Проверяет ОС, Docker Compose, занятость портов, DNS, ACME, сертификат, Nginx и volume Remnanode. Может изменить /etc/nginx/conf.d/remna-node-tls-setup.conf, /opt/certbot/docker-compose.yml, /opt/remnanode/docker-compose.yml, сертификаты в /opt/certbot/certs, /var/www/remna-node-site, /etc/remna-node-bootstrap.conf и renewal-файлы systemd. Может перезагрузить Nginx; если нужен volume или сертификат используется Xray/HY2 — может запустить/перезапустить Remnanode и оборвать VPN. Риск: краткий простой сайта или VPN. Откат: trap on_exit восстанавливает конфиги из /var/backups/remna-node-tls.*; если Compose был изменён, восстановление может снова применить контейнер. Изменение выпущенного сертификата автоматически не откатывается.'
+    ui_wrap '1. Проверить и исправить. Когда использовать: первичная настройка, восстановление или подготовка другого транспорта. Перед изменениями выбирается TCP/TLS, TCP/REALITY, gRPC/TLS, gRPC/REALITY, XHTTP/TLS или XHTTP/REALITY. Проверяет ОС, Docker Compose, порты, DNS, ACME, сертификат и Nginx. Config Profile в панели не меняет. Может изменить Nginx, Certbot/Node Compose, сертификаты, сайт, локальное состояние и renewal-файлы. При добавлении volume может пересоздать Remnanode и оборвать VPN; отдельное подтверждение обязательно. Откат: файлы восстанавливаются из /var/backups/remna-node-tls.*; Compose rollback может снова применить контейнер.'
     ui_print ''
     ui_wrap "2. Перевыпустить сертификат. Когда использовать: сертификат истёк, повреждён или его нужно заменить. Проверяет DNS и HTTP-01, затем запускает Certbot с --force-renewal. Может изменить сертификаты в /opt/certbot/certs, конфигурацию Nginx и renewal-службу/таймер. Возможен reload Nginx; Remnanode перезапускается только когда конфигурация Xray/HY2 явно ссылается на эти сертификаты. В этом случае VPN-подключения могут оборваться. Риск: лимиты выпуска Let's Encrypt и краткое прерывание VPN. При ошибке trap on_exit восстанавливает конфигурации из /var/backups/remna-node-tls.*; сертификат автоматически не откатывается."
     ui_print ''
     ui_wrap '3. Статус TLS / Selfsteal. Когда использовать: диагностика без исправлений. Проверяет DNS, срок и SAN сертификата, Nginx, HTTP 301, HTTPS на 9443, TLS 1.2/1.3, HSTS, состояние Remnanode, доступ сертификата из контейнера и таймер продления. REALITY/VLESS handshake и передача VPN-трафика не проверяются. Файлы не меняет; сервисы не перезапускает. Риск: только короткие локальные сетевые запросы. Откат не нужен.'
     ui_print ''
-    ui_wrap '4. Шаблоны профилей Remnawave. Когда использовать: при ручном создании Config Profile. Только показывает примеры TLS и REALITY SELFSTEAL. Никакие файлы и профили не меняет, сервисы не перезапускает. Риск отсутствует; откат не нужен.'
+    ui_wrap '4. Транспорты и шаблоны. Когда использовать: перед выбором метода соединения. Показывает шесть комбинаций и ограничения fallback. Только чтение: файлы, Node и Config Profile не меняет; сервисы не перезапускает. Риск отсутствует; откат не нужен. Реальный профиль меняется отдельно в панели.'
     ui_print ''
     ui_wrap '5. Выход. Завершает установщик. Проверок, изменений файлов и перезапуска сервисов нет. Откат не нужен.'
     ui_print ''
@@ -507,7 +684,8 @@ show_operation_warning() {
             ui_print ''
             ui_print 'ВНИМАНИЕ · Проверить и исправить'
             ui_wrap 'Могут измениться Nginx, Certbot Compose, Node Compose, сертификаты, сайт-заглушка, сохранённый домен и таймер продления.'
-            ui_wrap 'При изменении конфигурации может перезагрузиться Nginx. Если понадобится добавить certificate volume, Remnanode может быть пересоздан; при использовании сертификата Xray/HY2 он может быть перезапущен. VPN-подключения могут оборваться.'
+            ui_wrap 'При изменении конфигурации может перезагрузиться Nginx. Если выбран TLS и понадобится добавить certificate volume, Remnanode может быть пересоздан; VPN-подключения могут оборваться. Для REALITY volume не добавляется только ради этого inbound.'
+            ui_wrap 'Выбор транспорта готовит локальные зависимости и подсказку. Он не переключает Config Profile/Inbound в панели и не гарантирует скорость; клиент и сервер должны использовать одинаковый метод.'
             ui_wrap 'Перед каждой правкой или перезапуском будет отдельное подтверждение. Копии конфигураций сохраняются в backup-каталоге.'
             ;;
         2)
@@ -551,6 +729,7 @@ load_state() {
                 [[ $value == /* && $value != *$'\n'* && $value != *'..'* && $value =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
                 WEB_ROOT=$value
                 ;;
+            TRANSPORT_MODE) valid_transport_mode "$value" && TRANSPORT_MODE=$value || return 1 ;;
         esac
     done <"$STATE_FILE"
     [[ -n $DOMAIN && -n $WEB_ROOT ]]
@@ -560,10 +739,16 @@ save_state() {
     local tmp
     valid_domain "$DOMAIN" || die 'Не удалось сохранить некорректный DOMAIN.'
     [[ $WEB_ROOT == /* && $WEB_ROOT != *'..'* && $WEB_ROOT =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'WEB_ROOT должен быть безопасным абсолютным путём.'
+    [[ -z $TRANSPORT_MODE ]] || valid_transport_mode "$TRANSPORT_MODE" || die 'Не удалось сохранить неизвестный транспорт.'
     tmp=$(mktemp "${STATE_FILE}.XXXXXX")
-    printf 'DOMAIN=%s\nWEB_ROOT=%s\n' "$DOMAIN" "$WEB_ROOT" >"$tmp"
+    {
+        printf 'DOMAIN=%s\nWEB_ROOT=%s\n' "$DOMAIN" "$WEB_ROOT"
+        [[ -z $TRANSPORT_MODE ]] || printf 'TRANSPORT_MODE=%s\n' "$TRANSPORT_MODE"
+    } >"$tmp"
     chmod 0600 "$tmp"
+    backup_file "$STATE_FILE"
     mv -f -- "$tmp" "$STATE_FILE"
+    STATE_CHANGED=1
 }
 
 certificate_has_domain_san() {
@@ -628,7 +813,7 @@ status_row() {
 
 # shellcheck disable=SC2329 # Called through run_readonly_action.
 show_readiness() {
-    local cert=$CERTS_DIR/live/current/fullchain.pem active_mode='UNKNOWN'
+    local cert=$CERTS_DIR/live/current/fullchain.pem active_mode='unknown' active_mode_label
     local dns4='' dns6='' dns_state='FAIL' cert_state='FAIL' expiry='не определён' expiry_state='NOT TESTED'
     local domain_state='NOT TESTED' nginx_state='FAIL' redirect_state='NOT TESTED' https_state='NOT TESTED' tls12='NOT TESTED' tls13='NOT TESTED'
     local hsts_state='NOT TESTED' reality_state='NOT TESTED' vless_state='NOT TESTED'
@@ -681,12 +866,10 @@ show_readiness() {
         inside_state=PASS
         [[ $cert_state == PASS ]] && hy2_state=PASS
     fi
-    if [[ $https_state == PASS && $active_mode == 'REALITY SELFSTEAL' ]]; then
-        reality_state=WARNING
-    elif [[ $active_mode == 'REALITY SELFSTEAL' ]]; then
-        reality_state=FAIL
+    if active_modes_have_security reality "$active_mode"; then
+        if [[ $https_state == PASS ]]; then reality_state=WARNING; else reality_state=FAIL; fi
     fi
-    if [[ $active_mode == TLS ]]; then
+    if active_modes_have_security tls "$active_mode"; then
         if [[ $cert_state == PASS && $inside_state == PASS ]]; then vless_state=WARNING; else vless_state=FAIL; fi
     fi
     if systemctl is-active --quiet remna-cert-renew.timer && systemctl is-enabled --quiet remna-cert-renew.timer; then timer_state=PASS; fi
@@ -701,6 +884,8 @@ show_readiness() {
     status_row 'TLS 1.2' "$tls12" 'отдельный запрос к HTTPS backend'
     status_row 'TLS 1.3' "$tls13" 'отдельный запрос к HTTPS backend'
     status_row 'HSTS' "$hsts_state" 'ожидается Strict-Transport-Security max-age=300'
+    active_mode_label=$(format_transport_modes "$active_mode")
+    status_row 'VLESS transport' "$([[ $active_mode == unknown ]] && printf 'NOT TESTED' || printf PASS)" "$active_mode_label; это чтение runtime-конфигурации, не VPN handshake"
     status_row 'TCP/443' "$listener_state" "владелец listener: $listener_owner; TLS не подтверждает VLESS handshake"
     status_row 'rw-core/Xray' "$core_state" 'процесс в контейнере; это не подтверждает VPN handshake или трафик'
     status_row 'Docker volume' "$mount_state" "ожидается read-only $CERTS_DIR:/etc/letsencrypt"
@@ -757,55 +942,31 @@ managed_nginx_9443_listener() {
 }
 
 detect_active_mode() {
-    local security has_tls=0 has_reality=0
-    docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || { printf 'UNKNOWN\n'; return 0; }
-    # Only extract the non-secret inbound security field. Never print config files,
-    # keys, UUIDs, tokens, or the container's full command line.
-    security=$(docker exec remnanode sh -c 'find /etc /usr/local/etc /opt/remnanode -type f -name "*.json" -exec cat {} \; 2>/dev/null' 2>/dev/null | python3 -c 'import json,sys; s=sys.stdin.read(); d=json.JSONDecoder(); out=[]
-def walk(v):
-    if isinstance(v,dict):
-        for inbound in v.get("inbounds",[]):
-            if isinstance(inbound,dict):
-                mode=inbound.get("streamSettings",{}).get("security") if isinstance(inbound.get("streamSettings",{}),dict) else None
-                if isinstance(mode,str): out.append(mode)
-        for child in v.values(): walk(child)
-    elif isinstance(v,list):
-        for child in v: walk(child)
-i=0
-while i<len(s):
-    while i<len(s) and s[i].isspace(): i+=1
-    if i>=len(s): break
-    try: value,end=d.raw_decode(s,i)
-    except json.JSONDecodeError: break
-    walk(value); i=end
-print("\\n".join(out))' 2>/dev/null || true)
-    grep -Fxq reality <<<"$security" && has_reality=1 || true
-    grep -Fxq tls <<<"$security" && has_tls=1 || true
-    if ((has_reality && !has_tls)); then printf 'REALITY SELFSTEAL\n'
-    elif ((has_tls && !has_reality)); then printf 'TLS\n'
-    else printf 'UNKNOWN\n'; fi
+    local modes
+    docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true || { printf 'unknown\n'; return 0; }
+    # Emit only normalized VLESS transport/security tuples; never print the config.
+    modes=$(docker exec remnanode sh -c 'find /etc /usr/local/etc /opt/remnanode -type f -name "*.json" -exec cat {} \; 2>/dev/null' 2>/dev/null | transport_modes_from_config) || { printf 'unknown\n'; return 0; }
+    printf '%s\n' "$modes"
 }
 
 show_profile_templates() {
-    ui_wrap 'Шаблон TLS (Config Profile Remnawave):'
-    ui_print 'Входящий протокол: VLESS / RAW (TCP)'
-    ui_print 'Защита: TLS'
-    ui_wrap 'Путь к сертификату: /etc/letsencrypt/live/current/fullchain.pem'
-    ui_wrap 'Путь к ключу: /etc/letsencrypt/live/current/privkey.pem'
-    ui_wrap 'Резервный сайт (fallback): 127.0.0.1:8080'
+    ui_print 'ДОСТУПНЫЕ VLESS TRANSPORT / SECURITY'
     ui_print ''
-    ui_wrap 'Шаблон REALITY SELFSTEAL (Config Profile Remnawave):'
-    ui_print 'Входящий протокол: VLESS / RAW (TCP)'
-    ui_print 'Защита: REALITY'
-    ui_print 'Цель: 127.0.0.1:9443'
-    ui_print 'xver: 0'
-    ui_wrap 'privateKey: <EXISTING_SHARED_REALITY_PRIVATE_KEY>'
-    ui_wrap 'shortIds: <EXISTING_SHARED_REALITY_SHORT_IDS>'
-    ui_wrap 'serverNames: <ADD_THIS_NODE_DOMAIN>'
+    ui_wrap '1. TCP / TLS (RAW): сертификат /etc/letsencrypt/live/current внутри Remnanode; VLESS fallback на 127.0.0.1:8080 поддерживается только для TCP+TLS. Для сайта указывайте ALPN http/1.1.'
     ui_print ''
-    ui_wrap "REALITY serverNames не поддерживает wildcard. Добавьте домен этой Node в общий список serverNames: ${DOMAIN:-<DOMAIN>}"
-    ui_wrap 'Для общего профиля используйте общий REALITY privateKey; укажите все домены Nodes в serverNames и Host Address/SNI; target оставьте 127.0.0.1:9443.'
-    ui_wrap 'Риск общего privateKey: компрометация одной Node требует ротации ключа для всей группы.'
+    ui_wrap '2. TCP / REALITY (RAW): target 127.0.0.1:9443, xver=0; берите REALITY key/shortIds из согласованного профиля. TLS-сертификат нужен Nginx backend, но не самому REALITY inbound.'
+    ui_print ''
+    ui_wrap '3. gRPC / TLS: сертификат внутри Remnanode; serviceName должен совпасть с клиентом, ALPN h2 должен быть первым. Xray VLESS fallback не поддерживается; публичный сайт на том же 443 требует отдельно спроектированного HTTP/2 reverse proxy.'
+    ui_print ''
+    ui_wrap '4. gRPC / REALITY: target 127.0.0.1:9443; serviceName должен совпасть с клиентом. У gRPC нет VLESS fallback; официальная документация предупреждает о риске активного probing и рекомендует оценить XHTTP.'
+    ui_print ''
+    ui_wrap '5. XHTTP / TLS: сертификат внутри Remnanode; mode/path должны совпасть у клиента и сервера. Xray VLESS fallback недоступен для этой комбинации; reverse proxy не настраивается автоматически.'
+    ui_print ''
+    ui_wrap '6. XHTTP / REALITY: target 127.0.0.1:9443, xver=0; XHTTP mode/path должны совпасть у обеих сторон. Сертификат использует Nginx, кроме случаев, когда другой активный inbound (например HY2) явно требует volume.'
+    ui_print ''
+    ui_wrap 'Поддерживаемые комбинации проверяются по текущей матрице Xray. TLS и REALITY вместе с RAW, gRPC и XHTTP допустимы; остальные транспорты не предлагаются этим меню.'
+    ui_wrap "На Node обнаружено: $(format_transport_modes "$(detect_active_mode)"). Выбор целевого режима выполняется в пункте 1."
+    ui_wrap 'Установщик не редактирует/назначает Config Profile, Hosts или Squads. После подготовки вручную согласуйте inbound, Host и доступ Squad в панели; у Node одновременно назначается один полный Config Profile.'
 }
 
 # Return free, remnawave, nginx, or unknown. Xray ownership is confirmed by
@@ -1276,6 +1437,18 @@ issue_certificate() {
 }
 
 ensure_node_volume() {
+    local active_mode=$TRANSPORT_MODE usage='UNKNOWN' required=0
+    if [[ -z $active_mode ]]; then active_mode=$(detect_active_mode); fi
+    usage=$(node_certificate_usage)
+    node_certificate_mount_required "$TRANSPORT_MODE" "$active_mode" "$usage" && required=1
+    if ((!required)); then
+        if [[ $usage == UNKNOWN ]]; then
+            warn 'Не удалось определить, использует ли активный Xray/HY2 сертификат. Certificate volume не добавляется; Remnanode не перезапускается. Для TLS inbound сначала выберите TLS-профиль и повторите подготовку.'
+        else
+            say 'Выбран REALITY или активная конфигурация не использует файловый TLS-сертификат; новый Remnanode volume не добавляется, чтобы не прерывать VPN.'
+        fi
+        return 0
+    fi
     if grep -Fq "$CERT_MOUNT" "$NODE_COMPOSE"; then
         say 'Remnanode certificate volume already exists.'
         if ! docker inspect -f '{{.State.Running}}' remnanode 2>/dev/null | grep -qx true; then
@@ -1357,13 +1530,16 @@ firewall_check() {
 }
 
 print_summary() {
-    local cert=$CERTS_DIR/live/current/fullchain.pem tcp=NOT_YET_LISTENING udp=NOT_YET_LISTENING
+    local cert=$CERTS_DIR/live/current/fullchain.pem tcp=NOT_YET_LISTENING udp=NOT_YET_LISTENING active_mode
     port_is_listening 443 && tcp=LISTENING
     ss -H -lnu 'sport = :443' 2>/dev/null | grep -q . && udp=LISTENING || true
     say '========================================'
     say 'REMNAWAVE NODE TLS SETUP'
     say '========================================'
     say "DOMAIN: $DOMAIN"
+    say "PREPARED TRANSPORT: $(transport_mode_label "${TRANSPORT_MODE:-unknown}")"
+    active_mode=$(detect_active_mode)
+    say "ACTIVE VLESS TRANSPORT: $(format_transport_modes "$active_mode")"
     say 'DNS: PASS'
     say 'CERTIFICATE: PASS'
     openssl x509 -in "$cert" -noout -enddate | sed 's/^/EXPIRES: /'
@@ -1380,6 +1556,7 @@ print_summary() {
     say "TCP 443: $tcp"
     say "UDP 443: $udp"
     show_readiness
+    say 'NOTE: The selected transport only prepares local TLS dependencies and a profile template; the active Config Profile is not changed by this installer.'
     say 'NOTE: 443 listeners appear only after the appropriate Remnawave Config Profile is assigned to the Node.'
     systemctl list-timers remna-cert-renew.timer --no-pager || true
     say 'Listeners:'; ss -lntup
@@ -1393,6 +1570,85 @@ self_test() {
     valid_domain node.example.com/path && die 'self-test: path accepted'
     valid_email admin@example.com || die 'self-test: valid email rejected'
     valid_email invalid && die 'self-test: invalid email accepted'
+    local mode
+    local -a transport_modes=(tcp_tls tcp_reality grpc_tls grpc_reality xhttp_tls xhttp_reality)
+    for mode in "${transport_modes[@]}"; do valid_transport_mode "$mode" || die "self-test transport: rejected $mode"; done
+    valid_transport_mode tcp_ws && die 'self-test transport: accepted unsupported tcp_ws'
+    [[ $(transport_mode_method tcp_tls) == raw && $(transport_mode_method grpc_reality) == grpc && $(transport_mode_method xhttp_tls) == xhttp ]] || die 'self-test transport: method mapping'
+    [[ $(transport_mode_security tcp_tls) == tls && $(transport_mode_security xhttp_reality) == reality ]] || die 'self-test transport: security mapping'
+    transport_fixture='{"inbounds":[{"protocol":"vless","streamSettings":{"network":"tcp","security":"tls"},"settings":{"clients":[{"id":"PRIVATE-TEST-ID"}]}},{"protocol":"vless","streamSettings":{"method":"grpc","security":"reality"}},{"protocol":"vless","streamSettings":{"method":"xhttp","security":"tls"}},{"protocol":"hysteria","streamSettings":{"method":"hysteria","security":"tls"}}]}'
+    detected_modes=$(printf '%s' "$transport_fixture" | transport_modes_from_config)
+    [[ $detected_modes == grpc_reality,tcp_tls,xhttp_tls ]] || die "self-test transport: runtime detection returned $detected_modes"
+    [[ $detected_modes != *PRIVATE-TEST-ID* ]] || die 'self-test transport: secret value leaked into mode detection'
+    active_modes_have_security tls "$detected_modes" || die 'self-test transport: TLS inbound not found'
+    active_modes_have_security reality "$detected_modes" || die 'self-test transport: REALITY inbound not found'
+    if ! transport_mode_uses_node_certificate tcp_tls || ! transport_mode_uses_node_certificate grpc_tls || ! transport_mode_uses_node_certificate xhttp_tls; then
+        die 'self-test transport: TLS certificate dependency'
+    fi
+    transport_mode_uses_node_certificate tcp_reality && die 'self-test transport: REALITY incorrectly requires a Node certificate'
+    node_certificate_mount_required tcp_tls unknown UNKNOWN || die 'self-test transport: selected TLS mode did not require a certificate mount'
+    node_certificate_mount_required tcp_reality tcp_reality USED || die 'self-test transport: active HY2/TLS certificate dependency was ignored'
+    node_certificate_mount_required grpc_reality grpc_reality NOT_USED && die 'self-test transport: REALITY-only mode unnecessarily required a certificate mount'
+    node_certificate_mount_required '' unknown UNKNOWN && die 'self-test transport: unknown mode changed container mount policy'
+    [[ $(format_transport_modes tcp_tls,xhttp_reality) == 'TCP / TLS (RAW), XHTTP / REALITY' ]] || die 'self-test transport: active mode labels'
+    local transport_test_dir transport_input transport_output mode_number expected_mode input_fd output_fd
+    transport_test_dir=$(mktemp -d)
+    for mode_number in 1 2 3 4 5 6; do
+        case $mode_number in
+            1) expected_mode=tcp_tls ;; 2) expected_mode=tcp_reality ;; 3) expected_mode=grpc_tls ;;
+            4) expected_mode=grpc_reality ;; 5) expected_mode=xhttp_tls ;; 6) expected_mode=xhttp_reality ;;
+        esac
+        transport_input=$transport_test_dir/input
+        transport_output=$transport_test_dir/output
+        printf '%s\n' "$mode_number" >"$transport_input"
+        (
+            detect_active_mode() { printf 'unknown\n'; }
+            exec {input_fd}<"$transport_input"
+            exec {output_fd}>"$transport_output"
+            UI_INPUT_FD=$input_fd
+            UI_OUTPUT_FD=$output_fd
+            TTY_FD=/dev/null
+            COLUMNS=40
+            # shellcheck disable=SC2030 # Child-process test must not modify installer state.
+            TRANSPORT_MODE=''
+            ask_transport_mode
+            exec {output_fd}>&-
+            [[ $TRANSPORT_MODE == "$expected_mode" ]]
+        ) || die "self-test transport menu: choice $mode_number did not select $expected_mode"
+    done
+    printf 'invalid\n\n5\n' >"$transport_input"
+    (
+        detect_active_mode() { printf 'unknown\n'; }
+        exec {input_fd}<"$transport_input"
+        exec {output_fd}>"$transport_output"
+        UI_INPUT_FD=$input_fd
+        UI_OUTPUT_FD=$output_fd
+        TTY_FD=/dev/null
+        COLUMNS=40
+        # shellcheck disable=SC2030 # Child-process test must not modify installer state.
+        TRANSPORT_MODE=''
+        ask_transport_mode
+        exec {output_fd}>&-
+        [[ $TRANSPORT_MODE == xhttp_tls ]]
+    ) || die 'self-test transport menu: invalid/empty input was not handled'
+    grep -Fq 'ВАЖНО' "$transport_output" || die 'self-test transport menu: missing warning for TLS without VLESS fallback'
+    grep -Fq 'HTTP 301' "$transport_output" || die 'self-test transport menu: TLS fallback warning omitted the HTTP redirect impact'
+    printf '\n' >"$transport_input"
+    (
+        detect_active_mode() { printf 'tcp_tls\n'; }
+        exec {input_fd}<"$transport_input"
+        exec {output_fd}>"$transport_output"
+        UI_INPUT_FD=$input_fd
+        UI_OUTPUT_FD=$output_fd
+        TTY_FD=/dev/null
+        COLUMNS=40
+        # shellcheck disable=SC2030 # Child-process test must not modify installer state.
+        TRANSPORT_MODE=''
+        ask_transport_mode
+        exec {output_fd}>&-
+        [[ $TRANSPORT_MODE == tcp_tls ]]
+    ) || die 'self-test transport menu: Enter did not preserve the detected mode'
+    rm -rf -- "$transport_test_dir"
     local normalized_domain
     normalized_domain=dowload.24alisa.ru
     valid_domain "$normalized_domain" || die 'self-test input 1: plain hostname rejected'
@@ -1843,7 +2099,7 @@ PY
     readonly_log=$tmp/read-only-actions.log
     : >"$readonly_log"
     READONLY_ACTION_LOG=$readonly_log
-    MOCK_EMPTY_MOUNT=0 MOCK_CORE_READY=1 MOCK_443_OWNER=remnawave MOCK_HOST_CERT=1 MOCK_CONTAINER_CERT=1 MOCK_ACTIVE_MODE='REALITY SELFSTEAL'
+    MOCK_EMPTY_MOUNT=0 MOCK_CORE_READY=1 MOCK_443_OWNER=remnawave MOCK_HOST_CERT=1 MOCK_CONTAINER_CERT=1 MOCK_ACTIVE_MODE='tcp_reality'
     # The read-only menu tests reject all service/configuration mutation commands.
     # shellcheck disable=SC2329
     load_state() { DOMAIN=node.example.com; WEB_ROOT=/var/www/remna-node-site; return 0; }
@@ -1944,7 +2200,7 @@ PY
 
     # Regression: Nginx/9443 and rw-core/443 can be healthy while the Xray
     # certificate path and Docker mount are absent. Report each state separately.
-    MOCK_EMPTY_MOUNT=1 MOCK_HOST_CERT=0 MOCK_CONTAINER_CERT=0 MOCK_ACTIVE_MODE=TLS
+    MOCK_EMPTY_MOUNT=1 MOCK_HOST_CERT=0 MOCK_CONTAINER_CERT=0 MOCK_ACTIVE_MODE=tcp_tls
     : >"$ui_output_path"
     exec {output_fd}>"$ui_output_path"
     UI_OUTPUT_FD=$output_fd
@@ -1964,7 +2220,9 @@ PY
     UI_OUTPUT_FD=$output_fd
     run_readonly_action 4 || die 'self-test read-only: profile templates action failed'
     exec {output_fd}>&-
-    grep -Fq 'Шаблон TLS' "$ui_output_path" || die 'self-test read-only: profile templates missing'
+    for expected_mode in 'TCP / TLS (RAW)' 'TCP / REALITY (RAW)' 'gRPC / TLS' 'gRPC / REALITY' 'XHTTP / TLS' 'XHTTP / REALITY'; do
+        grep -Fq "$expected_mode" "$ui_output_path" || die "self-test read-only: missing transport template $expected_mode"
+    done
     [[ ! -s $READONLY_ACTION_LOG ]] || die "self-test read-only: templates invoked a service/configuration mutation: $(cat "$READONLY_ACTION_LOG")"
     [[ $(sha256sum "$readonly_source" | awk '{print $1}') == "$readonly_hash" ]] || die 'self-test read-only: source/sentinel file changed'
 
@@ -1987,10 +2245,16 @@ esac
 if [[ $MODE == 2 ]]; then
     load_state || die "Для перевыдачи требуется корректный $STATE_FILE. Сначала выполните Verify / repair."
     ask_value "Email Let's Encrypt: " EMAIL valid_email
+    # shellcheck disable=SC2031 # The child assignments above are isolated self-test fixtures.
+    if [[ -z $TRANSPORT_MODE ]]; then
+        detected_mode=$(detect_active_mode)
+        valid_transport_mode "$detected_mode" && TRANSPORT_MODE=$detected_mode || true
+    fi
 else
     load_state || true
     ask_value 'Домен этой Node: ' DOMAIN valid_domain
     ask_value "Email Let's Encrypt: " EMAIL valid_email
+    ask_transport_mode
 fi
 check_prerequisites
 check_dns

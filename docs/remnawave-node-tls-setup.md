@@ -6,18 +6,33 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/wester11/voikop/main/tools/remnawave-node-tls-setup.sh)
 ```
 
-Поддерживаются Debian и Ubuntu с Docker Compose plugin. Скрипт использует интерактивный терминал через `/dev/tty`; при первоначальной настройке спрашивает домен этой Node и email Let's Encrypt, а при отсутствующем Nginx отдельно просит ввести `APPLY` перед установкой пакета. Безопасное состояние ограничено `/etc/remna-node-bootstrap.conf` и содержит только `DOMAIN` и `WEB_ROOT`.
+Поддерживаются Debian и Ubuntu с Docker Compose plugin. Скрипт использует интерактивный терминал через `/dev/tty`; при первоначальной настройке спрашивает домен этой Node и email Let's Encrypt, а при отсутствующем Nginx отдельно просит ввести `APPLY` перед установкой пакета. Локальное состояние `/etc/remna-node-bootstrap.conf` содержит `DOMAIN`, `WEB_ROOT` и последний выбранный `TRANSPORT_MODE`; секреты профиля туда не записываются.
 
 Меню установщика на русском:
 
 - `[1] Проверить и исправить` — диагностика с возможным изменением файлов, reload Nginx и изменением контейнера Remnanode; при пересоздании/перезапуске VPN-соединения могут оборваться.
 - `[2] Перевыпустить сертификат` — принудительный выпуск через Certbot; сертификат меняется, Nginx может перезагрузиться, а Remnanode может перезапуститься, если Xray/HY2 явно использует этот сертификат.
 - `[3] Показать статус TLS / Selfsteal` — только чтение: сетевые проверки без изменения файлов и перезапуска сервисов.
-- `[4] Шаблоны профилей Remnawave` — только чтение: безопасные примеры Config Profile.
+- `[4] Транспорты и шаблоны профилей` — только чтение: совместимость шести режимов, требования к сертификату и ограничения fallback.
 - `[H] Подробная справка` — только чтение; показывает назначение, риски, файлы и откат для каждого пункта.
 - `[5] Выход`.
 
 Перед пунктами 1 и 2 установщик отдельно перечисляет возможные изменения и ждёт явный ответ `ДА`; пустой ввод отменяет действие. Пункт 3 проверяет HTTPS-заглушку и готовность локальных backend-ов, но не выполняет REALITY/VLESS/HY2 handshake и не доказывает передачу VPN-трафика. Результаты помечаются `PASS`, `FAIL`, `WARNING` или `NOT TESTED`.
+
+При выборе пункта 1 меню предлагает целевой VLESS режим:
+
+| Выбор | Транспорт и защита | Сертификат в Remnanode | Веб fallback |
+| --- | --- | --- | --- |
+| 1 | RAW/TCP + TLS | Нужен file mount | VLESS fallback на `127.0.0.1:8080` поддерживается |
+| 2 | RAW/TCP + REALITY | Не нужен для этого inbound | REALITY target `127.0.0.1:9443` |
+| 3 | gRPC + TLS | Нужен file mount | Xray fallback не поддерживается |
+| 4 | gRPC + REALITY | Не нужен для этого inbound | REALITY target `127.0.0.1:9443` |
+| 5 | XHTTP + TLS | Нужен file mount | Xray fallback не поддерживается |
+| 6 | XHTTP + REALITY | Не нужен для этого inbound | REALITY target `127.0.0.1:9443` |
+
+Выбор задаёт целевой режим для локальной подготовки и шаблонов. Установщик не редактирует и не назначает Config Profile в Panel, не меняет Hosts/Squads и не переключает активный inbound. Для фактического переключения вручную обновите или назначьте согласованный Config Profile в Remnawave и проверьте, что клиент использует тот же transport/security, `serviceName` или XHTTP path. Выбор режима не обещает меньшую задержку: результат зависит от сети, клиента и сервера.
+
+Перед выбором gRPC/TLS или XHTTP/TLS учтите: текущий HTTP 301 ведёт на публичный 443, а эти режимы не поддерживают обычный VLESS fallback сайта. Не активируйте такой профиль, пока отдельный HTTPS frontend для сайта не настроен и не проверен.
 
 ## Что проверяется и настраивается
 
@@ -27,7 +42,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/wester11/voikop/main/tools/r
 - выделенный Nginx config в `/etc/nginx/conf.d/remna-node-tls-setup.conf`: публичный HTTP/80 для ACME HTTP-01, HTTP backend на `127.0.0.1:8080` и HTTPS backend на `127.0.0.1:9443`; оба backend используют один `WEB_ROOT`;
 - Certbot Compose в `/opt/certbot/docker-compose.yml` и сертификат, полученный через webroot;
 - соответствие SAN домену, валидность private key и совпадение public key сертификата с private key;
-- локальный alias `/opt/certbot/certs/live/current -> <домен Node>` и read-only volume `/opt/certbot/certs:/etc/letsencrypt:ro` в сервисе `remnanode`;
+- локальный alias `/opt/certbot/certs/live/current -> <домен Node>`; read-only volume `/opt/certbot/certs:/etc/letsencrypt:ro` добавляется для выбранного TLS режима либо когда активный Xray/HY2 runtime явно ссылается на сертификат;
 - доступность сертификата внутри контейнера, HTTP/HTTPS backend, hostname и SAN, HTTP-01 webroot и ежедневный systemd renewal timer.
 
 Скрипт намеренно завершится без изменений, если TCP/443 или UDP/443 заняты Nginx либо владельцем, которого нельзя подтвердить как процесс Xray/`rw-core` внутри `remnanode`. Владение сверяется по PID из `ss` с PID/именем процесса из `docker top remnanode`. TCP/80, TCP/8080 или TCP/9443, занятые неизвестным процессом, либо DNS, указывающий не на эту Node, останавливают настройку. Если `9443` уже занят управляемым Nginx, Verify / repair проверяет и при необходимости восстанавливает его конфигурацию. Firewall не выключается и его правила не меняются. Если Nginx не установлен, установка пакета требует явного `APPLY`.
@@ -72,6 +87,19 @@ TLS-режим VLESS RAW/TCP использует эти файловые пут
 ```
 
 REALITY SELFSTEAL использует `target: 127.0.0.1:9443` и `xver: 0`. `privateKey` и `shortIds` — существующие значения Remnawave, установщик их не генерирует и не сохраняет. Добавьте домен Node в общий список `serverNames`.
+
+## Поддерживаемые VLESS transport/security
+
+Установщик распознаёт `streamSettings.method` и старый `streamSettings.network`, не выводя содержимое runtime-конфигурации. В меню доступны VLESS RAW/TCP, gRPC и XHTTP с TLS или REALITY. Xray допускает TLS со всеми тремя transport; REALITY поддерживается только с RAW, gRPC и XHTTP. [Матрица совместимости Xray](https://xtls.github.io/en/config/transport.html), [REALITY](https://xtls.github.io/en/config/transports/reality.html).
+
+- **RAW/TCP + TLS** — TLS-сертификат должен быть доступен внутри Remnanode. VLESS `fallbacks` поддерживаются для TCP+TLS; текущий сайт fallback использует `127.0.0.1:8080`. [Xray fallbacks](https://xtls.github.io/en/config/features/fallback.html).
+- **RAW/TCP + REALITY** — Nginx HTTPS backend на `127.0.0.1:9443` используется как REALITY target. Сертификат не монтируется в Remnanode только ради этого inbound.
+- **gRPC + TLS** — `serviceName` должен совпадать с клиентом; ALPN `h2` ставится первым. Xray VLESS fallback не поддерживает gRPC. Чтобы одновременно отдавать обычный сайт на публичном 443, потребуется отдельно спроектированный HTTP/2 reverse proxy; этот установщик его не создаёт. [Xray gRPC](https://xtls.github.io/en/config/transports/grpc.html).
+- **gRPC + REALITY** — поддерживается Xray, target использует `127.0.0.1:9443`; `serviceName` должен совпасть с клиентом. Документация Xray предупреждает о риске active probing gRPC и рекомендует рассмотреть XHTTP.
+- **XHTTP + TLS** — сертификат должен быть доступен внутри Remnanode; XHTTP-параметры должны совпасть у клиента и сервера. Xray fallback ограничен TCP+TLS, поэтому веб fallback для XHTTP TLS автоматически не добавляется.
+- **XHTTP + REALITY** — REALITY target использует `127.0.0.1:9443`; сертификат остаётся у Nginx, если другой активный inbound вроде HY2 не использует его напрямую.
+
+При нескольких inbound статус показывает каждый найденный VLESS режим. Неразбираемая или отсутствующая runtime-конфигурация даёт `NOT TESTED`, а не предположение о работающем VPN. Выбранный TLS mode может потребовать certificate volume и отдельно подтверждённое пересоздание Remnanode. Для REALITY-only, если активный Xray/HY2 не ссылается на сертификат, volume не добавляется, чтобы не прерывать VPN только ради REALITY.
 
 Допускается **один общий REALITY-профиль для нескольких Node**, если:
 
@@ -123,4 +151,4 @@ bash tools/remnawave-node-tls-setup.sh --self-test
 shellcheck tools/remnawave-node-tls-setup.sh
 ```
 
-`--self-test` покрывает оба Nginx backend-а, безопасное поведение при чужом listener на 9443, SAN mismatch/pass, неизменившийся/обновлённый сертификат, Compose-миграцию, первый выпуск сертификата, задержанную доступность файлов в контейнере, готовый Xray-профиль и ноду без назначенного профиля. Отдельный regression-сценарий моделирует рабочие Nginx/9443 и `rw-core`/TCP/443 при пустых Docker mounts и отсутствующих внутри контейнера сертификатах: статус показывает каждое состояние отдельно и не объявляет VLESS TLS готовым. Проверяется, что Compose-применение не вызывает второй restart, а откат первого запуска восстанавливает конфиги, symlink и timer. Тест также проверяет меню, справку, пустой/невалидный ввод и read-only обработчики с заглушками. Он использует временные файлы; Docker, systemd и production Node не меняются. Это не заменяет реальный VPN-handshake.
+`--self-test` покрывает шесть transport/security режимов, runtime detection RAW/TCP alias и нескольких inbound, сертификат для TLS и отсутствие лишнего mount для REALITY-only, выбор режима, неверный/пустой ввод, оба Nginx backend-а, чужой listener на 9443, SAN mismatch/pass, обновление сертификата, Compose-миграцию, первый выпуск сертификата, задержанную доступность файлов, готовый Xray-профиль и Node без назначенного профиля. Отдельный regression-сценарий проверяет раздельный статус Nginx/9443, `rw-core`/TCP/443 и Docker certificate mount. Проверяется, что Compose-применение не вызывает второй restart, а rollback первого запуска восстанавливает конфиги, symlink, state и timer. Тест использует временные файлы и заглушки; Docker, systemd и production Node не меняются. Он не заменяет реальный VPN-handshake.
