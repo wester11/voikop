@@ -45,9 +45,9 @@ confirm_action() {
     local message=$1 answer fd
     fd=$(ui_output_fd)
     ui_wrap "$message"
-    printf '  Для продолжения введите ДА (Enter отменяет): ' >&"$fd"
+    printf '  Type YES to continue. Press Enter to cancel: ' >&"$fd"
     ui_read answer || answer=''
-    [[ ${answer,,} == да ]]
+    [[ ${answer^^} == YES ]]
 }
 cancel_operation() {
     CANCELLED=1
@@ -639,6 +639,7 @@ menu() {
         ui_print '[1] Проверить и исправить'
         ui_wrap 'Проверки и нужные исправления; возможны изменения конфигов, reload Nginx и restart Remnanode с разрывом VPN.'
         ui_print '[2] Перевыпустить сертификат'
+        ui_wrap 'Доступно после завершённой первичной настройки. Для первого запуска выберите пункт 1.'
         ui_wrap 'Принудительный выпуск сертификата; возможны reload Nginx и restart Remnanode с разрывом VPN.'
         ui_print '[3] Показать статус TLS / Selfsteal'
         ui_wrap 'Только чтение: проверки без правки файлов и без перезапуска сервисов.'
@@ -647,10 +648,15 @@ menu() {
         ui_print '[H] Подробная справка'
         ui_wrap 'Только чтение: действия, файлы, риски и откат.'
         ui_print '[5] Выход'
+        ui_wrap 'Во всех подтверждениях используется одно слово: YES. Enter отменяет действие.'
         printf 'Выберите пункт: ' >&"$fd"
         if ! ui_read choice; then MODE=5; return 0; fi
         case ${choice,,} in
-            1|2|3|4|5) MODE=$choice; return 0 ;;
+            1|3|4|5) MODE=$choice; return 0 ;;
+            2)
+                if load_state; then MODE=2; return 0; fi
+                ui_wrap 'Сохранённая первичная настройка отсутствует или повреждена. Для первого запуска выберите пункт 1.'
+                ;;
             h)
                 show_detailed_help
                 printf 'Нажмите Enter, чтобы вернуться в меню: ' >&"$fd"
@@ -675,7 +681,7 @@ show_detailed_help() {
     ui_print ''
     ui_wrap '5. Выход. Завершает установщик. Проверок, изменений файлов и перезапуска сервисов нет. Откат не нужен.'
     ui_print ''
-    ui_wrap 'Подтверждение опасных действий: требуется ввести ДА. Пустой ввод или любой другой ответ отменяет действие.'
+    ui_wrap 'Подтверждение опасных действий: введите YES. Пустой ввод или любой другой ответ отменяет действие.'
 }
 
 show_operation_warning() {
@@ -1089,11 +1095,7 @@ check_dns() {
 
 ensure_nginx() {
     if ! has nginx; then
-        confirm_or_cancel 'Пакет Nginx отсутствует. Будут установлены Nginx и его зависимости; после настройки Nginx может быть запущен.'
-        printf 'Nginx отсутствует. Для установки через apt и изменений введите APPLY: ' >&"$TTY_FD"
-        local answer
-        IFS= read -r -u "$TTY_FD" answer || die 'Не удалось прочитать подтверждение.'
-        [[ $answer == APPLY ]] || die 'Подготовка отменена; изменений нет.'
+        confirm_or_cancel 'Nginx отсутствует. Будут выполнены apt-get update и установка пакета Nginx; после настройки служба может быть запущена. Введите YES, чтобы продолжить.'
         apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y nginx
     fi
@@ -2031,6 +2033,8 @@ YAML
     grep -Fq 'http_redirect_ready' "$tmp/remna-cert-renew" || die 'self-test: renewal must verify HTTP 301'
 
     local ui_input_path=$tmp/menu.input ui_output_path=$tmp/menu.output menu_expected readonly_log readonly_hash readonly_source
+    # shellcheck disable=SC2329 # Called indirectly by menu when checking option 2.
+    load_state() { DOMAIN=node.example.com; WEB_ROOT=/var/www/remna-node-site; return 0; }
     run_menu_case() {
         local input=$1 expected=$2 input_fd output_fd
         printf '%s' "$input" >"$ui_input_path"
@@ -2045,6 +2049,13 @@ YAML
         exec {output_fd}>&-
     }
     for menu_expected in 1 2 3 4 5; do run_menu_case "$menu_expected"$'\n' "$menu_expected"; done
+    # Missing setup state must keep option 2 in the menu and explain how to start.
+    # shellcheck disable=SC2329 # Called indirectly by menu when checking option 2.
+    load_state() { return 1; }
+    run_menu_case $'2\n5\n' 5
+    if ! grep -Fq 'Сохранённая первичная настройка' "$ui_output_path" || ! grep -Fq 'выберите пункт 1' "$ui_output_path"; then
+        die 'self-test menu: option 2 did not explain first setup'
+    fi
     MENU_TEST_COLUMNS=40
     run_menu_case $'x\n\n5\n' 5
     grep -Fq 'Неизвестный пункт' "$ui_output_path" || die 'self-test menu: invalid input was not explained'
@@ -2092,7 +2103,21 @@ PY
     exec {input_fd}<"$ui_input_path"
     exec {output_fd}>"$ui_output_path"
     UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
-    confirm_action 'test confirmation' || die 'self-test confirmation: explicit ДА was rejected'
+    if confirm_action 'test confirmation'; then die 'self-test confirmation: Cyrillic ДА was accepted'; fi
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    printf 'APPLY\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    if confirm_action 'test confirmation'; then die 'self-test confirmation: APPLY was accepted as a generic token'; fi
+    exec {input_fd}<&-
+    exec {output_fd}>&-
+    printf 'yes\n' >"$ui_input_path"
+    exec {input_fd}<"$ui_input_path"
+    exec {output_fd}>"$ui_output_path"
+    UI_INPUT_FD=$input_fd UI_OUTPUT_FD=$output_fd
+    confirm_action 'test confirmation' || die 'self-test confirmation: lowercase yes was rejected'
     exec {input_fd}<&-
     exec {output_fd}>&-
 
@@ -2243,7 +2268,7 @@ case $MODE in
     *) die 'Недопустимый пункт меню.' ;;
 esac
 if [[ $MODE == 2 ]]; then
-    load_state || die "Для перевыдачи требуется корректный $STATE_FILE. Сначала выполните Verify / repair."
+    load_state || die "Для перевыпуска не найден корректный $STATE_FILE. Сначала завершите пункт 1 «Проверить и исправить»."
     ask_value "Email Let's Encrypt: " EMAIL valid_email
     # shellcheck disable=SC2031 # The child assignments above are isolated self-test fixtures.
     if [[ -z $TRANSPORT_MODE ]]; then
