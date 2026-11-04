@@ -1,0 +1,12 @@
+{
+  "files": {
+    "installer": "orbit-temp-install.sh",
+    "public_key": "public.key",
+    "sha256sums": "SHA256SUMS",
+    "signature": "orbit-temp-install.sh.sig"
+  },
+  "key_number": "30778dfa5d1efe27",
+  "sha256": "a31adb1ced657f66c9e6866b591dbf382910c4ae67cd644157be9bf1e62cbbe3",
+  "sig_b64": "RWQwd436XR7+J24sPNWmAp5Zno/FCwVzJ5dRWN/cpF7OeswCxqIPuQQLRUoD7dB1UkeikckeV8NER7YYTC8aNqJtLpEEhl0GdAQ=",
+  "version": "1.0.1"
+}
