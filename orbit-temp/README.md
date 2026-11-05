@@ -12,13 +12,14 @@ the WireGuard key pair is generated **on the router** (the private key never lea
 ```
 orbit-temp/
   README.md
-  v1.0.1/                       current release
+  v1.0.2/                       current release
     orbit-temp-install.sh       the installer (POSIX sh / busybox ash)
     orbit-temp-install.sh.sig   usign (Ed25519) signature of the installer
     public.key                  usign public key that verifies the signature
     SHA256SUMS                  sha256 of the installer
     release.json                version, sha256, signature, key number
-  v1.0.0/                       first release (kept for the record; superseded by v1.0.1)
+  v1.0.1/                       superseded by v1.0.2
+  v1.0.0/                       first release (kept for the record; superseded)
 ```
 
 ## How it is used
@@ -51,6 +52,8 @@ sh /tmp/orbit-install.sh status     # show state
 sh /tmp/orbit-install.sh rollback   # remove only what ORBIT TEMP created (objects named orbit_temp*, its key line, its state files)
 ```
 
+v1.0.2 (found and verified on a physical Cudy WR3000S, OpenWrt 25.12.5): after installing `wireguard-tools` the network service is restarted ONCE so that netifd loads the WireGuard protocol handler (netifd only scans its protocol directory at start; without this the tunnel interface stays down) - LAN/Wi-Fi/WAN reconnect for about 10-20 s, only when the handler is not yet known; `rollback` now tears the interface down through netifd first, rebuilds the firewall (`fw4 restart`; a reload keeps the chains of a removed zone), removes the host route netifd leaves behind and gives back the original bytes of `/etc/config/{network,firewall,dropbear}` when their content is unchanged.
+
 v1.0.1 retries activation and confirmation also on TLS errors (a connection reset during the TLS handshake used to be reported as a certificate failure).
 
 Exit codes: `0` ok, `1` precondition, `2` usage, `3` configured but no handshake yet (re-run), `4` key refused,
@@ -59,10 +62,10 @@ Exit codes: `0` ok, `1` precondition, `2` usage, `3` configured but no handshake
 ## Manual verification
 
 ```
-wget -q -O /tmp/orbit-install.sh      <raw URL of v1.0.1/orbit-temp-install.sh>
-wget -q -O /tmp/orbit-install.sh.sig  <raw URL of v1.0.1/orbit-temp-install.sh.sig>
+wget -q -O /tmp/orbit-install.sh      <raw URL of v1.0.2/orbit-temp-install.sh>
+wget -q -O /tmp/orbit-install.sh.sig  <raw URL of v1.0.2/orbit-temp-install.sh.sig>
 printf '%s\n' 'untrusted comment: ORBIT-TEMP installer signing key 2026-11' 'RWQwd436XR7+J3D8sygjIOeoPrSeKJD8zpKOa5Bv+zTkkd7ANp+KzkF8' > /tmp/orbit-install.pub
-echo 'a31adb1ced657f66c9e6866b591dbf382910c4ae67cd644157be9bf1e62cbbe3  /tmp/orbit-install.sh' | sha256sum -c -
+echo 'c287853d2e5efcba26447b6c47e0c7019eb032820b039996396febe9c4534973  /tmp/orbit-install.sh' | sha256sum -c -
 usign -V -m /tmp/orbit-install.sh -p /tmp/orbit-install.pub
 ```
 
