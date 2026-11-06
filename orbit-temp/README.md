@@ -13,6 +13,7 @@ the WireGuard key pair is generated **on the router** (the private key never lea
 orbit-temp/
   README.md
   v1.0.4/                       current release
+  boot/1.0.4-b1/ob.sh           hash-pinned bootstrap for v1.0.4 (immutable)
   v1.0.3/                       superseded by v1.0.4
   v1.0.2/                       superseded by v1.0.3
     orbit-temp-install.sh       the installer (POSIX sh / busybox ash)
@@ -64,6 +65,8 @@ v1.0.1 retries activation and confirmation also on TLS errors (a connection rese
 
 Exit codes: `0` ok, `1` precondition, `2` usage, `3` configured but no handshake yet (re-run), `4` key refused,
 `5` rate limited, `6` hub unreachable (re-run with the same key), `7` TLS failure, `8` confirmation rejected.
+
+**Short install commands (bootstrap).** The admin panel no longer gives a 1000+ character one-liner: pasted lines longer than 510 characters are cut by the interactive BusyBox `ash` of OpenWrt (continuation prompt `>`). The panel now shows a command of 240-450 characters that downloads `boot/<installer version>-b<N>/ob.sh` (from GitHub, the mirror, or GitHub with a mirror fallback), checks it against the SHA-256 written in the command, and runs it. `ob.sh` embeds the installer version, its SHA-256, both installer URLs and the usign public key; it downloads the signed installer from ONE source, verifies SHA-256 AND the usign signature, removes everything and stops on any failure, and only then starts the installer (which asks for the one-time activation key itself). `boot/1.0.4-b1/` is immutable like every release directory.
 
 ## Manual verification
 
